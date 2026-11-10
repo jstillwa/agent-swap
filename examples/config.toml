@@ -1,0 +1,24 @@
+# ~/.config/claude-swap/config.toml. Every key is optional.
+# The values for scalar keys are the defaults. Define your own target(s).
+threshold = 95              # percent, any window (5h or 7d) triggers
+switch_back_delay = "10m"   # after the stored resets_at
+switch_back_timeout = "1h"  # max wait for the touch file before a forced switch at idle
+poll = "30s"
+default_target = "gateway"
+notify = true               # macOS notification on each switch
+# statusline_cmd = "..."    # default: statusLine.command from ~/.claude/settings.json
+# state_dir = "~/.local/state/claude-swap"   (absolute path)
+
+# The key is never stored here: key_cmd prints it on demand (Claude Code apiKeyHelper).
+[targets.gateway]           # any Anthropic-compatible endpoint serving <base_url>/v1/messages
+base_url = "https://llm-gateway.example.com/anthropic"
+key_cmd  = "security find-generic-password -s llm-gateway -w"
+
+[targets.console]
+key_cmd = "security find-generic-password -s anthropic-api -w"
+
+# Message templates: {file} {pct} {target} {resets_at}
+# handoff_message = "..."        # SUB -> API, must include {file}
+# resume_message = "..."         # after relaunch on API
+# return_message = "..."         # API -> SUB, must include {file}
+# return_resume_message = "..."  # after relaunch on SUB
