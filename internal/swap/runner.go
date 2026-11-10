@@ -35,7 +35,7 @@ func NewRunner(cfg Config, cfgPath, target, exe, pane string, args []string) (*R
 		return nil, fmt.Errorf("unknown target %q", target)
 	}
 	if pane == "" {
-		return nil, errors.New("claude-swap run must be started inside tmux (TMUX_PANE unset); use `claude-swap` to launch")
+		return nil, errors.New("agent-swap run must be started inside tmux (TMUX_PANE unset); use `agent-swap` to launch")
 	}
 	dir := filepath.Join(cfg.StateDir, "sessions", time.Now().Format("20060102-150405")+"-"+nonce()[:6])
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -235,5 +235,5 @@ func (r *Runner) notify(msg string) {
 		return
 	}
 	esc := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(msg)
-	_ = exec.Command("osascript", "-e", `display notification "`+esc+`" with title "claude-swap"`).Run()
+	_ = exec.Command("osascript", "-e", `display notification "`+esc+`" with title "agent-swap"`).Run()
 }

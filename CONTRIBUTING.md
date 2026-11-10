@@ -5,10 +5,10 @@ You can send bug reports, fixes and improvements. When you contribute, you agree
 ## Development setup
 
 ```sh
-git clone https://github.com/jstillwa/claude-swap
-cd claude-swap
+git clone https://github.com/jstillwa/agent-swap
+cd agent-swap
 go test ./...
-go install ./cmd/claude-swap
+go install ./cmd/agent-swap
 ```
 
 Requirements: Go 1.27 or later, and tmux. Only the manual end-to-end test needs Claude Code.
@@ -16,7 +16,7 @@ Requirements: Go 1.27 or later, and tmux. Only the manual end-to-end test needs 
 ## Layout
 
 ```
-cmd/claude-swap/main.go     CLI: subcommands and flags
+cmd/agent-swap/main.go     CLI: subcommands and flags
 internal/swap/config.go     config file, defaults, message templates
 internal/swap/state.go      account.json / session.json, flock + atomic write
 internal/swap/logic.go      pure decision logic (Trigger, Decide, StatusText)
@@ -49,7 +49,7 @@ poll = "3s"
 switch_back_timeout = "20s"
 notify = false
 EOF
-claude-swap --config /tmp/cs.toml --threshold 1 -- --model haiku
+agent-swap --config /tmp/cs.toml --threshold 1 -- --model haiku
 ```
 
 1. Send one prompt. Claude receives the handoff message, touches the file, and resumes on API billing.
@@ -61,7 +61,7 @@ The supervisor log is at `/tmp/cs-state/sessions/*/log`.
 
 ## Claude Code compatibility
 
-claude-swap depends on the behaviors in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#verified-claude-code-behaviors). If a Claude Code release changes one of them, open an issue with:
+agent-swap depends on the behaviors in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#verified-claude-code-behaviors). If a Claude Code release changes one of them, open an issue with:
 
 - the Claude Code version (`claude --version`)
 - the supervisor log

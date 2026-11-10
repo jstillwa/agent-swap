@@ -1,4 +1,4 @@
-module github.com/jstillwa/claude-swap
+module github.com/jstillwa/agent-swap
 
 go 1.27.3
 

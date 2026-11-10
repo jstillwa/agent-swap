@@ -21,10 +21,10 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
   - Toward subscription: the wait stops after `switch_back_timeout` (default 1 h). The switch then occurs at the next idle point.
 - **Switch back** at the window reset plus `switch_back_delay` (default 10 min).
 - **Shared account state** in `account.json`, with flock and atomic writes. All wrapped sessions switch together.
-- **API key handling.** Claude Code gets the key through `apiKeyHelper` and a `key_cmd`. claude-swap never stores or exports the key.
+- **API key handling.** Claude Code gets the key through `apiKeyHelper` and a `key_cmd`. agent-swap never stores or exports the key.
 - **Status bar.** The tmux `status-right` shows the usage stages, a warning from 90%, the handoff state and API mode.
 - **Notifications.** macOS notifications on each switch.
 - **Configuration.** A TOML config with target profiles and message templates, plus CLI flag overrides.
 
-[Unreleased]: https://github.com/jstillwa/claude-swap/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/jstillwa/claude-swap/releases/tag/v0.1.0
+[Unreleased]: https://github.com/jstillwa/agent-swap/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/jstillwa/agent-swap/releases/tag/v0.1.0

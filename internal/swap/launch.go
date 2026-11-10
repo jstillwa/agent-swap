@@ -34,7 +34,7 @@ func Launch(tmuxBin, exe string, runArgs []string) error {
 	}
 	shell := ShellJoin(append([]string{exe, "run"}, runArgs...))
 	if os.Getenv("TMUX") != "" {
-		return syscall.Exec(path, []string{"tmux", "new-window", "-n", "claude-swap", "-c", cwd, shell}, os.Environ())
+		return syscall.Exec(path, []string{"tmux", "new-window", "-n", "agent-swap", "-c", cwd, shell}, os.Environ())
 	}
 	name := SessionName(cwd, func(n string) bool {
 		return exec.Command(path, "has-session", "-t", "="+n).Run() == nil

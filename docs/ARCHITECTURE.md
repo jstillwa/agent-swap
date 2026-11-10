@@ -1,20 +1,20 @@
 # Architecture
 
-claude-swap is one Go binary with five roles. Each role has a different caller: the user, tmux or Claude Code.
+agent-swap is one Go binary with five roles. Each role has a different caller: the user, tmux or Claude Code.
 
 | Role | Started by | Code |
 |---|---|---|
-| Launcher: `claude-swap [flags]` | the user | `internal/swap/launch.go` |
-| Supervisor: `claude-swap run` | tmux, as the pane process | `internal/swap/runner.go` |
-| Statusline: `claude-swap statusline` | Claude Code, on each statusline refresh | `internal/swap/helpers.go` |
-| Hook: `claude-swap hook <Event>` | Claude Code hooks | `internal/swap/helpers.go` |
-| Key helper: `claude-swap key <target>` | Claude Code `apiKeyHelper` | `internal/swap/helpers.go` |
+| Launcher: `agent-swap [flags]` | the user | `internal/swap/launch.go` |
+| Supervisor: `agent-swap run` | tmux, as the pane process | `internal/swap/runner.go` |
+| Statusline: `agent-swap statusline` | Claude Code, on each statusline refresh | `internal/swap/helpers.go` |
+| Hook: `agent-swap hook <Event>` | Claude Code hooks | `internal/swap/helpers.go` |
+| Key helper: `agent-swap key <target>` | Claude Code `apiKeyHelper` | `internal/swap/helpers.go` |
 
 The decision logic is in `internal/swap/logic.go`: `Peak`, `Trigger`, `Decide` and `StatusText`. This file has no I/O. Its tests need no tmux and no Claude Code.
 
 ## Design principles
 
-1. **No screen scraping.** Every signal comes from documented Claude Code interfaces: statusline JSON and hooks. claude-swap uses tmux only to type input (`send-keys`) and to set `status-right`.
+1. **No screen scraping.** Every signal comes from documented Claude Code interfaces: statusline JSON and hooks. agent-swap uses tmux only to type input (`send-keys`) and to set `status-right`.
 2. **Never cut a turn.** A switch always waits for an idle point, reported by the `Stop` or `StopFailure` hook.
 3. **Secrets stay out of files and the environment.** Claude Code gets the API key on demand through `apiKeyHelper`.
 4. **Account-wide state, per-session action.** All sessions share the usage. Thus all sessions share the decision about API billing. Each session does its own handoff.
@@ -24,11 +24,11 @@ The decision logic is in `internal/swap/logic.go`: `Peak`, `Trigger`, `Decide` a
 
 ```
 tmux pane
-└─ claude-swap run ..................... supervisor, lives as long as the pane
+└─ agent-swap run ..................... supervisor, lives as long as the pane
    └─ claude --settings <mode>.settings.json [--resume <id>] [user args]
-      ├─ statusLine  → claude-swap statusline   (records usage, then renders the user's statusline)
-      ├─ hooks       → claude-swap hook <Event> (records idle/busy/rate-limited)
-      └─ apiKeyHelper→ claude-swap key <target> (API mode only)
+      ├─ statusLine  → agent-swap statusline   (records usage, then renders the user's statusline)
+      ├─ hooks       → agent-swap hook <Event> (records idle/busy/rate-limited)
+      └─ apiKeyHelper→ agent-swap key <target> (API mode only)
 ```
 
 When the pane process exits, the pane closes. Thus the supervisor is the pane process, and `claude` is its child process. The two share the TTY of the pane. When the child exits:
@@ -45,16 +45,16 @@ At startup the supervisor writes two files into its session directory. It gives 
 - `sub.settings.json`: `statusLine` and four hooks (`SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure`).
 - `api.settings.json`: the same, plus `apiKeyHelper` and `env.ANTHROPIC_BASE_URL`.
 
-Claude Code **merges** `--settings` hooks with the hooks of the user and the project. A live test showed that both sets fire. The `statusLine` setting replaces the user's setting. But `claude-swap statusline` executes the user's command, from `CLAUDE_SWAP_USER_STATUSLINE`. Thus the visible statusline does not change.
+Claude Code **merges** `--settings` hooks with the hooks of the user and the project. A live test showed that both sets fire. The `statusLine` setting replaces the user's setting. But `agent-swap statusline` executes the user's command, from `AGENT_SWAP_USER_STATUSLINE`. Thus the visible statusline does not change.
 
 The child process gets these environment variables:
 
 | Variable | Used by |
 |---|---|
-| `CLAUDE_SWAP_SESSION_DIR` | hooks and the statusline: where `session.json` is |
-| `CLAUDE_SWAP_STATE_DIR` | the statusline: where `account.json` is |
-| `CLAUDE_SWAP_CONFIG` | `key`: which config file to read |
-| `CLAUDE_SWAP_USER_STATUSLINE` | the statusline: the command to render |
+| `AGENT_SWAP_SESSION_DIR` | hooks and the statusline: where `session.json` is |
+| `AGENT_SWAP_STATE_DIR` | the statusline: where `account.json` is |
+| `AGENT_SWAP_CONFIG` | `key`: which config file to read |
+| `AGENT_SWAP_USER_STATUSLINE` | the statusline: the command to render |
 
 ## State
 
@@ -70,7 +70,7 @@ The child process gets these environment variables:
 }
 ```
 
-- `five_hour` and `seven_day` come from `rate_limits` in the statusline input. claude-swap ignores a `null` value, because `rate_limits` is absent on API billing.
+- `five_hour` and `seven_day` come from `rate_limits` in the statusline input. agent-swap ignores a `null` value, because `rate_limits` is absent on API billing.
 - `api_until` is the end of the current API period. The desired mode is `API` while `now < api_until`.
 
 `sessions/<id>/session.json` is per supervisor:
@@ -122,7 +122,7 @@ When ready, the supervisor types `/exit`. If the child does not exit in 30 s, th
 
 ## Verified Claude Code behaviors
 
-Live tmux tests on Claude Code 2.1.322 showed these behaviors. If a new Claude Code version changes one of them, claude-swap needs a change too.
+Live tmux tests on Claude Code 2.1.322 showed these behaviors. If a new Claude Code version changes one of them, agent-swap needs a change too.
 
 | Behavior | Why it matters |
 |---|---|
@@ -132,7 +132,7 @@ Live tmux tests on Claude Code 2.1.322 showed these behaviors. If a new Claude C
 | `--settings` hooks merge with user hooks. | The user's setup is untouched. |
 | A 429 response fires `StopFailure` with `error: "rate_limit"`, and `Stop` does not fire. | Detecting rate limits and idle state. |
 | `/exit` exits with code 0 and prints `claude --resume <id>`. | The relaunch path. |
-| A directory not yet trusted shows a trust dialog whose default is "No, exit". | claude-swap assumes the directory is already trusted. |
+| A directory not yet trusted shows a trust dialog whose default is "No, exit". | agent-swap assumes the directory is already trusted. |
 
 ## Testing
 

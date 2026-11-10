@@ -1,4 +1,4 @@
-// claude-swap runs Claude Code in tmux and moves the session to API billing
+// agent-swap runs Claude Code in tmux and moves the session to API billing
 // when subscription usage reaches the threshold, then back after the reset.
 package main
 
@@ -13,15 +13,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jstillwa/claude-swap/internal/swap"
+	"github.com/jstillwa/agent-swap/internal/swap"
 )
 
 const usage = `usage:
-  claude-swap [flags] [-- claude args]   launch claude in tmux under claude-swap
-  claude-swap status                      show shared usage state
+  agent-swap [flags] [-- claude args]   launch claude in tmux under agent-swap
+  agent-swap status                      show shared usage state
 
 flags:
-  --config PATH              config file (default ~/.config/claude-swap/config.toml)
+  --config PATH              config file (default ~/.config/agent-swap/config.toml)
   --target NAME              API target profile (default: default_target, or the only target)
   --threshold PCT            switch to API at this usage percent (default 95)
   --switch-back-delay DUR    wait after the reset before switching back (default 10m)
@@ -29,14 +29,14 @@ flags:
   --poll DUR                 usage check interval (default 30s)
 
 internal (used by tmux, hooks and Claude Code):
-  claude-swap run [flags] [-- claude args]
-  claude-swap statusline | hook <Event> | key <target>
+  agent-swap run [flags] [-- claude args]
+  agent-swap statusline | hook <Event> | key <target>
 `
 
 func main() {
 	code, err := run(os.Args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "claude-swap:", err)
+		fmt.Fprintln(os.Stderr, "agent-swap:", err)
 		if code == 0 {
 			code = 1
 		}
@@ -113,7 +113,7 @@ func run(args []string) (int, error) {
 }
 
 func parse(args []string) (cfg swap.Config, cfgPath, target string, rest []string, err error) {
-	fs := flag.NewFlagSet("claude-swap", flag.ContinueOnError)
+	fs := flag.NewFlagSet("agent-swap", flag.ContinueOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	p := fs.String("config", "", "")
 	t := fs.String("target", "", "")

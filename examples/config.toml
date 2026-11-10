@@ -1,4 +1,4 @@
-# ~/.config/claude-swap/config.toml. Every key is optional.
+# ~/.config/agent-swap/config.toml. Every key is optional.
 # The values for scalar keys are the defaults. Define your own target(s).
 threshold = 95              # percent, any window (5h or 7d) triggers
 switch_back_delay = "10m"   # after the stored resets_at
@@ -7,7 +7,7 @@ poll = "30s"
 default_target = "gateway"
 notify = true               # macOS notification on each switch
 # statusline_cmd = "..."    # default: statusLine.command from ~/.claude/settings.json
-# state_dir = "~/.local/state/claude-swap"   (absolute path)
+# state_dir = "~/.local/state/agent-swap"   (absolute path)
 
 # The key is never stored here: key_cmd prints it on demand (Claude Code apiKeyHelper).
 [targets.gateway]           # any Anthropic-compatible endpoint serving <base_url>/v1/messages

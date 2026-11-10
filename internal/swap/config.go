@@ -50,16 +50,16 @@ type Config struct {
 }
 
 const (
-	defHandoff = "⚠ EMERGENCY SHUTDOWN PROCEDURE (claude-swap). Subscription usage at {pct}%. " +
+	defHandoff = "⚠ EMERGENCY SHUTDOWN PROCEDURE (agent-swap). Subscription usage at {pct}%. " +
 		"Pause all work immediately at the nearest safe point: finish or revert any half-applied edit, " +
 		"do not start new tool calls, and note any running background tasks in one line. " +
 		"Your session will be resumed on API billing ({target}) with full context. When ready, run: touch {file}"
-	defResume = "Session resumed on API billing ({target}) by claude-swap. Background tasks from before " +
+	defResume = "Session resumed on API billing ({target}) by agent-swap. Background tasks from before " +
 		"the restart are gone; re-launch any you noted. You may continue."
-	defReturn = "⚠ ACCOUNT CYCLE (claude-swap). Subscription usage has reset. Pause at the nearest safe point: " +
+	defReturn = "⚠ ACCOUNT CYCLE (agent-swap). Subscription usage has reset. Pause at the nearest safe point: " +
 		"finish or revert any half-applied edit, do not start new tool calls, and note any running background " +
 		"tasks in one line. Your session will be resumed on the subscription with full context. When ready, run: touch {file}"
-	defReturnResume = "Session resumed on subscription by claude-swap. Background tasks from before the " +
+	defReturnResume = "Session resumed on subscription by agent-swap. Background tasks from before the " +
 		"restart are gone; re-launch any you noted. You may continue."
 )
 
@@ -77,15 +77,15 @@ func Defaults() Config {
 		ReturnResumeMessage: defReturnResume,
 		ClaudeBin:           "claude",
 		TmuxBin:             "tmux",
-		StateDir:            filepath.Join(home, ".local", "state", "claude-swap"),
+		StateDir:            filepath.Join(home, ".local", "state", "agent-swap"),
 		Notify:              true,
 	}
 }
 
-// DefaultConfigPath is ~/.config/claude-swap/config.toml.
+// DefaultConfigPath is ~/.config/agent-swap/config.toml.
 func DefaultConfigPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "claude-swap", "config.toml")
+	return filepath.Join(home, ".config", "agent-swap", "config.toml")
 }
 
 // LoadConfig reads path over the defaults. A missing file yields the defaults.

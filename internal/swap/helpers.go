@@ -13,10 +13,10 @@ import (
 
 // Environment passed to the wrapped claude (and so to its hooks and helpers).
 const (
-	EnvSessionDir = "CLAUDE_SWAP_SESSION_DIR"
-	EnvStateDir   = "CLAUDE_SWAP_STATE_DIR"
-	EnvConfig     = "CLAUDE_SWAP_CONFIG"
-	EnvStatusline = "CLAUDE_SWAP_USER_STATUSLINE"
+	EnvSessionDir = "AGENT_SWAP_SESSION_DIR"
+	EnvStateDir   = "AGENT_SWAP_STATE_DIR"
+	EnvConfig     = "AGENT_SWAP_CONFIG"
+	EnvStatusline = "AGENT_SWAP_USER_STATUSLINE"
 )
 
 func AccountPath(stateDir string) string { return filepath.Join(stateDir, "account.json") }

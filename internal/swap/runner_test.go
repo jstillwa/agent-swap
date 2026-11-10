@@ -20,7 +20,7 @@ printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
 // when $FAKE_QUIT exists (user quitting on their own).
 const fakeClaude = `#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_ARGS_LOG"
-printf '{"claude_session_id":"sid-1","idle":true,"started_at":%s}' "$(date +%s)" > "$CLAUDE_SWAP_SESSION_DIR/session.json"
+printf '{"claude_session_id":"sid-1","idle":true,"started_at":%s}' "$(date +%s)" > "$AGENT_SWAP_SESSION_DIR/session.json"
 n=$(grep -c -- '-l /exit$' "$FAKE_TMUX_LOG")
 while [ "$(grep -c -- '-l /exit$' "$FAKE_TMUX_LOG")" = "$n" ]; do
   [ -f "$FAKE_QUIT" ] && exit 7
@@ -115,7 +115,7 @@ func TestRunnerFullCycle(t *testing.T) {
 	}
 
 	// 3. After reset+delay: return handoff; nobody touches; 1s timeout at idle switches back.
-	waitFor(t, "return handoff", 8*time.Second, func() bool { return strings.Contains(read(tmuxLog), "ACCOUNT CYCLE (claude-swap)") })
+	waitFor(t, "return handoff", 8*time.Second, func() bool { return strings.Contains(read(tmuxLog), "ACCOUNT CYCLE (agent-swap)") })
 	waitFor(t, "SUB relaunch", 5*time.Second, func() bool { return len(lines(argsLog)) >= 3 })
 	if l := lines(argsLog)[2]; l != "--settings "+r.settingsPath(Sub)+" --resume sid-1 --model haiku" {
 		t.Fatalf("sub launch: %s", l)

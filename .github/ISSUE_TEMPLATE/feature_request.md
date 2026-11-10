@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a change to how or when claude-swap switches
+about: Suggest a change to how or when agent-swap switches
 labels: enhancement
 ---
 
