@@ -85,7 +85,8 @@ func TestDecideSkipsMessageWhenAlreadyRateLimited(t *testing.T) {
 }
 
 func TestDecideToAPIReadiness(t *testing.T) {
-	a := Account{APIUntil: t0.Unix() + 100, FiveHour: &Window{UsedPct: 97, ResetsAt: t0.Unix() + 50}}
+	// API period outlasts the 24h probe so Desired stays API (else Cancel).
+	a := Account{APIUntil: t0.Unix() + 48*3600, FiveHour: &Window{UsedPct: 97, ResetsAt: t0.Add(30 * time.Hour).Unix()}}
 	ph := &Phase{To: API, Started: t0.Unix()}
 	cases := []struct {
 		name string
@@ -147,6 +148,51 @@ func TestStatusText(t *testing.T) {
 		a.APIUntil = t0.Unix() + 7200
 		if got := StatusText(t0, c, "gateway", a, tc.mode, tc.ph); !strings.Contains(got, tc.want) {
 			t.Errorf("pct %v: %q lacks %q", tc.pct, got, tc.want)
+		}
+	}
+}
+
+// F1: a handoff whose target no longer matches the desired mode is cancelled,
+// whether or not the session is idle.
+func TestDecideCancelsStaleHandoff(t *testing.T) {
+	sub := Account{} // desired SUB
+	api := Account{APIUntil: t0.Unix() + 3600}
+	cases := []struct {
+		name string
+		a    Account
+		cur  Mode
+		ph   *Phase
+	}{
+		{"to API but desired SUB", sub, Sub, &Phase{To: API, Started: t0.Unix()}},
+		{"to SUB but desired API", api, API, &Phase{To: Sub, Started: t0.Unix()}},
+	}
+	for _, c := range cases {
+		for _, s := range []Session{{Idle: true}, {Idle: false}, {Idle: true, RateLimited: true}} {
+			for _, touched := range []bool{false, true} {
+				if got := Decide(t0, cfgT(), c.a, s, c.cur, c.ph, touched); got != Cancel {
+					t.Errorf("%s (session %+v touched=%v): got %v want Cancel", c.name, s, touched, got)
+				}
+			}
+		}
+	}
+	// A matching phase is not cancelled.
+	if got := Decide(t0, cfgT(), api, Session{Idle: true}, Sub, &Phase{To: API, Started: t0.Unix()}, false); got == Cancel {
+		t.Fatal("matching phase must not be cancelled")
+	}
+}
+
+// F7 (reverted): rate-limited with only reset or missing windows falls back
+// to a 5-hour API period.
+func TestTriggerRateLimitedWithOnlyResetWindows(t *testing.T) {
+	cases := map[string]Account{
+		"no data":          {},
+		"both reset":       {FiveHour: &Window{UsedPct: 80, ResetsAt: t0.Unix() - 1}, SevenDay: &Window{UsedPct: 30, ResetsAt: t0.Unix() - 1}},
+		"5h reset, 7d nil": {FiveHour: &Window{UsedPct: 80, ResetsAt: t0.Unix()}},
+	}
+	for name, a := range cases {
+		reset := t0.Add(5 * time.Hour).Unix()
+		if !Trigger(&a, t0, cfgT(), true) || a.ResetsAt != reset || a.APIUntil != reset+600 {
+			t.Errorf("%s: want 5h fallback, got %+v", name, a)
 		}
 	}
 }

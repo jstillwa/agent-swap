@@ -1,9 +1,9 @@
 # ~/.config/agent-swap/config.toml. Every key is optional.
 # The values for scalar keys are the defaults. Define your own target(s).
-threshold = 95              # percent, any window (5h or 7d) triggers
-switch_back_delay = "10m"   # after the stored resets_at
-switch_back_timeout = "1h"  # max wait for the touch file before a forced switch at idle
-poll = "30s"
+threshold = 95              # percent, any window (5h or 7d) triggers; must be > 0 and <= 100
+switch_back_delay = "10m"   # after the stored resets_at; must be >= 0
+switch_back_timeout = "1h"  # max wait for the touch file before a forced switch at idle; must be > 0
+poll = "30s"                # must be > 0
 default_target = "gateway"
 notify = true               # macOS notification on each switch
 # statusline_cmd = "..."    # default: statusLine.command from ~/.claude/settings.json
@@ -12,7 +12,7 @@ notify = true               # macOS notification on each switch
 # The key is never stored here: key_cmd prints it on demand (Claude Code apiKeyHelper).
 [targets.gateway]           # any Anthropic-compatible endpoint serving <base_url>/v1/messages
 base_url = "https://llm-gateway.example.com/anthropic"
-key_cmd  = "security find-generic-password -s llm-gateway -w"
+key_cmd  = "security find-generic-password -s llm-gateway -w"   # required
 
 [targets.console]
 key_cmd = "security find-generic-password -s anthropic-api -w"

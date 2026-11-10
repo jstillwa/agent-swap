@@ -18,7 +18,7 @@ import (
 
 const usage = `usage:
   agent-swap [flags] [-- claude args]   launch claude in tmux under agent-swap
-  agent-swap status                      show shared usage state
+  agent-swap status [--config PATH]     show shared usage state ($AGENT_SWAP_CONFIG if no flag)
 
 flags:
   --config PATH              config file (default ~/.config/agent-swap/config.toml)
@@ -69,7 +69,12 @@ func run(args []string) (int, error) {
 		}
 		return 0, swap.Key(cfg, args[1], os.Stdout)
 	case "status":
-		cfg, err := swap.LoadConfig(configPath(""))
+		fs := flag.NewFlagSet("status", flag.ContinueOnError)
+		p := fs.String("config", os.Getenv(swap.EnvConfig), "")
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2, err
+		}
+		cfg, err := swap.LoadConfig(configPath(*p))
 		if err != nil {
 			return 1, err
 		}
@@ -140,7 +145,10 @@ func parse(args []string) (cfg swap.Config, cfgPath, target string, rest []strin
 			cfg.Poll.Duration = *poll
 		}
 	})
-	if target, err = cfg.ResolveTarget(*t); err != nil {
+	if target, err = cfg.ResolveTarget(*t); err == nil {
+		err = cfg.Validate(target)
+	}
+	if err != nil {
 		err = fmt.Errorf("%w (config: %s)", err, cfgPath)
 	}
 	return cfg, cfgPath, target, fs.Args(), err

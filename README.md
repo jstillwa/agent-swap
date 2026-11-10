@@ -77,7 +77,9 @@ agent-swap                      # same as `claude`, but inside a managed tmux se
 agent-swap -- --model opus      # everything after -- goes to claude
 ```
 
-- **Outside tmux**, agent-swap creates and attaches the session `cs-<dirname>`.
+agent-swap gives all claude arguments to the first launch. A relaunch after a switch gets only the persistent options, such as `--model`. It does not get a prompt, `--continue`, `--resume`, `--session-id`, `--fork-session`, `--print`, `--from-pr`, `--teleport`, `--cloud`, `--tmux`, `--bg`/`--background` or `--desktop`. A relaunch keeps `-w`/`--worktree`. A resume inside a worktree is not tested.
+
+- **Outside tmux**, agent-swap creates and attaches the session `as-<dirname>`.
 - **Inside tmux**, it opens a new window named `agent-swap`.
 
 Then use Claude Code as usual. Your own statusline, hooks, settings and plugins continue to operate.
@@ -85,6 +87,13 @@ Then use Claude Code as usual. Your own statusline, hooks, settings and plugins 
 ## Configuration
 
 Use the file `~/.config/agent-swap/config.toml`. Every key is optional. Command-line flags override the file.
+
+agent-swap checks the config before it starts tmux or claude. A bad value stops it with exit code 2. The error names the key. These are the limits:
+
+- `threshold` is more than 0 and not more than 100.
+- `switch_back_delay` is 0 or more. `switch_back_timeout` and `poll` are more than 0.
+- `claude_bin`, `tmux_bin` and `state_dir` are not empty.
+- The selected target has a `key_cmd`.
 
 ```toml
 threshold = 95              # switch to API when any window (5h or 7d) reaches this %
@@ -166,7 +175,7 @@ The default handoff message:
 ```
    ┌──────────────── tmux pane ────────────────┐
    │ agent-swap run   (supervisor)            │
-   │   └─ claude --settings <generated> [--resume <id>]
+   │   └─ claude [--resume <id>] [args] --settings <generated>
    │        ├─ statusline → agent-swap statusline ─┐
    │        └─ hooks      → agent-swap hook <Ev>  ─┤
    └────────────────────────────────────────────────┘
@@ -199,7 +208,7 @@ The default handoff message:
 
 ```sh
 agent-swap [flags] [-- claude args]   # launch in tmux (the normal entry point)
-agent-swap status                     # shared usage state and the desired mode
+agent-swap status [--config PATH]     # shared usage state and the desired mode
 agent-swap --help
 ```
 
@@ -211,6 +220,8 @@ agent-swap statusline                     # statusLine command
 agent-swap hook <Event>                   # SessionStart | UserPromptSubmit | Stop | StopFailure
 agent-swap key <target>                   # apiKeyHelper
 ```
+
+`status` reads the config from `--config`. If you omit the flag, it uses `$AGENT_SWAP_CONFIG`, then the default path.
 
 ## Files and state
 
@@ -250,7 +261,7 @@ agent-swap key <target>                   # apiKeyHelper
 
 **Does the conversation really continue?** Yes. `claude --resume <id>` reloads the full transcript. Each provider has its own prompt cache. Thus the first request after a switch writes the full cache again.
 
-**Can I force a switch?** Yes. Edit `api_until` in `account.json`. Set it to a future Unix time for API billing. Set it to `0` for the subscription.
+**Can I force a switch?** Yes. Edit `api_until` in `account.json`. Set it to a future Unix time for API billing. Set it to `0` for the subscription. A forced return to the subscription stays only while usage is below the threshold. If usage is at or above the threshold, the next poll starts a new API period.
 
 ## Documentation
 

@@ -107,8 +107,8 @@ func TestShellJoin(t *testing.T) {
 }
 
 func TestSessionNameUnique(t *testing.T) {
-	taken := map[string]bool{"cs-my-proj": true, "cs-my-proj-2": true}
-	if got := SessionName("/x/my proj", func(n string) bool { return taken[n] }); got != "cs-my-proj-3" {
+	taken := map[string]bool{"as-my-proj": true, "as-my-proj-2": true}
+	if got := SessionName("/x/my proj", func(n string) bool { return taken[n] }); got != "as-my-proj-3" {
 		t.Fatal(got)
 	}
 }
@@ -150,5 +150,98 @@ func TestResolveTarget(t *testing.T) {
 	}
 	if _, err := c.ResolveTarget("missing"); err == nil {
 		t.Fatal("unknown target must be an error")
+	}
+}
+
+// F6: a payload carrying only seven_day keeps a live stored five_hour and
+// clears one that has already reset.
+func TestStatuslineMergesWindows(t *testing.T) {
+	sd := t.TempDir()
+	t.Setenv(EnvStateDir, sd)
+	t.Setenv(EnvSessionDir, "")
+	t.Setenv(EnvStatusline, "")
+	seed := func(five *Window) {
+		t.Helper()
+		if err := Update(AccountPath(sd), func(a *Account) {
+			a.FiveHour, a.SevenDay = five, &Window{UsedPct: 20, ResetsAt: t0.Unix() + 90000}
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	only7d := `{"rate_limits":{"seven_day":{"used_percentage":31,"resets_at":1800090000}}}`
+	feed := func(in string) Account {
+		t.Helper()
+		if err := Statusline(strings.NewReader(in), &bytes.Buffer{}, t0); err != nil {
+			t.Fatal(err)
+		}
+		a, err := Load[Account](AccountPath(sd))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+
+	seed(&Window{UsedPct: 88, ResetsAt: t0.Unix() + 600})
+	a := feed(only7d)
+	if a.FiveHour == nil || a.FiveHour.UsedPct != 88 || a.FiveHour.ResetsAt != t0.Unix()+600 {
+		t.Fatalf("live five_hour must be kept: %+v", a.FiveHour)
+	}
+	if a.SevenDay == nil || a.SevenDay.UsedPct != 31 || a.SevenDay.ResetsAt != 1800090000 {
+		t.Fatalf("seven_day must be replaced: %+v", a.SevenDay)
+	}
+
+	seed(&Window{UsedPct: 88, ResetsAt: t0.Unix()}) // reset at now: no longer live
+	if a = feed(only7d); a.FiveHour != nil {
+		t.Fatalf("reset five_hour must be cleared: %+v", a.FiveHour)
+	}
+
+	// A non-nil window in the payload always replaces the stored one.
+	seed(&Window{UsedPct: 88, ResetsAt: t0.Unix() + 600})
+	a = feed(`{"rate_limits":{"five_hour":{"used_percentage":5,"resets_at":1800018000}}}`)
+	if a.FiveHour == nil || a.FiveHour.UsedPct != 5 || a.FiveHour.ResetsAt != 1800018000 {
+		t.Fatalf("five_hour must be replaced: %+v", a.FiveHour)
+	}
+	if a.SevenDay == nil || a.SevenDay.UsedPct != 20 {
+		t.Fatalf("live seven_day must be kept: %+v", a.SevenDay)
+	}
+
+	// Monotonic: a payload with an older reset, or the same reset and lower
+	// usage, does not lower a live stored window; equal reset and higher does.
+	seed(&Window{UsedPct: 88, ResetsAt: t0.Unix() + 600})
+	for _, in := range []string{
+		`{"rate_limits":{"five_hour":{"used_percentage":50,"resets_at":1800000600}}}`, // same reset, lower
+		`{"rate_limits":{"five_hour":{"used_percentage":99,"resets_at":1800000300}}}`, // older reset
+	} {
+		if a = feed(in); a.FiveHour == nil || a.FiveHour.UsedPct != 88 || a.FiveHour.ResetsAt != t0.Unix()+600 {
+			t.Fatalf("stale payload %s lowered the stored window: %+v", in, a.FiveHour)
+		}
+	}
+	if a = feed(`{"rate_limits":{"five_hour":{"used_percentage":90,"resets_at":1800000600}}}`); a.FiveHour.UsedPct != 90 {
+		t.Fatalf("same reset, higher usage must replace: %+v", a.FiveHour)
+	}
+	seed(&Window{UsedPct: 88, ResetsAt: t0.Unix()}) // stored window has reset: any payload wins
+	if a = feed(`{"rate_limits":{"five_hour":{"used_percentage":3,"resets_at":1800018000}}}`); a.FiveHour == nil || a.FiveHour.UsedPct != 3 {
+		t.Fatalf("reset stored window must be replaced: %+v", a.FiveHour)
+	}
+
+	// rate_limits null still leaves everything untouched.
+	before := feed(`{"rate_limits":null}`)
+	if before.FiveHour == nil || before.SevenDay == nil {
+		t.Fatalf("null rate_limits changed data: %+v", before)
+	}
+}
+
+// F7: a new prompt clears a stale rate-limited flag.
+func TestHookUserPromptSubmitClearsRateLimited(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(EnvSessionDir, dir)
+	for _, ev := range []string{"StopFailure", "UserPromptSubmit"} {
+		if err := Hook(ev, strings.NewReader(`{"error":"rate_limit"}`), t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, _ := Load[Session](SessionPath(dir))
+	if s.Idle || s.RateLimited {
+		t.Fatalf("after UserPromptSubmit want busy and not rate-limited: %+v", s)
 	}
 }

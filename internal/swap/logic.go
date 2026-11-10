@@ -18,9 +18,10 @@ const (
 	Noop Action = iota
 	StartHandoff
 	Switch
+	Cancel
 )
 
-func (a Action) String() string { return [...]string{"Noop", "StartHandoff", "Switch"}[a] }
+func (a Action) String() string { return [...]string{"Noop", "StartHandoff", "Switch", "Cancel"}[a] }
 
 // Phase is an in-progress handoff for one session.
 type Phase struct {
@@ -81,7 +82,8 @@ func Trigger(a *Account, now time.Time, cfg Config, rateLimited bool) bool {
 }
 
 // Decide is the per-session state machine. A switch always waits for an idle
-// session so a turn is never cut off.
+// session so a turn is never cut off. A handoff the desired mode no longer
+// matches is cancelled at once.
 func Decide(now time.Time, cfg Config, a Account, s Session, cur Mode, ph *Phase, touched bool) Action {
 	if ph == nil {
 		switch {
@@ -92,6 +94,9 @@ func Decide(now time.Time, cfg Config, a Account, s Session, cur Mode, ph *Phase
 		default:
 			return StartHandoff
 		}
+	}
+	if ph.To != a.Desired(now) {
+		return Cancel
 	}
 	if !s.Idle {
 		return Noop

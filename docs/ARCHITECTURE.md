@@ -25,7 +25,7 @@ The decision logic is in `internal/swap/logic.go`: `Peak`, `Trigger`, `Decide` a
 ```
 tmux pane
 └─ agent-swap run ..................... supervisor, lives as long as the pane
-   └─ claude --settings <mode>.settings.json [--resume <id>] [user args]
+   └─ claude [--resume <id>] [user args] --settings <mode>.settings.json
       ├─ statusLine  → agent-swap statusline   (records usage, then renders the user's statusline)
       ├─ hooks       → agent-swap hook <Event> (records idle/busy/rate-limited)
       └─ apiKeyHelper→ agent-swap key <target> (API mode only)
@@ -40,14 +40,14 @@ The supervisor ignores `SIGINT`, so Ctrl-C goes to Claude. The supervisor stops 
 
 ## Generated settings
 
-At startup the supervisor writes two files into its session directory. It gives one of them to `claude --settings`:
+At startup the supervisor writes two files into its session directory. It gives one of them to `claude --settings`. This option comes last in the argument list. Thus a user `--settings` cannot override the hooks or `apiKeyHelper`:
 
 - `sub.settings.json`: `statusLine` and four hooks (`SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure`).
 - `api.settings.json`: the same, plus `apiKeyHelper` and `env.ANTHROPIC_BASE_URL`.
 
 Claude Code **merges** `--settings` hooks with the hooks of the user and the project. A live test showed that both sets fire. The `statusLine` setting replaces the user's setting. But `agent-swap statusline` executes the user's command, from `AGENT_SWAP_USER_STATUSLINE`. Thus the visible statusline does not change.
 
-The child process gets these environment variables:
+The child process gets the environment of the supervisor, minus the endpoint and credential variables that [SECURITY.md](../SECURITY.md) lists. It keeps `CLAUDE_CODE_OAUTH_TOKEN`, because that can be the subscription login. These inherited values could override the mode that `--settings` selects. The child also gets these variables:
 
 | Variable | Used by |
 |---|---|
@@ -71,6 +71,7 @@ The child process gets these environment variables:
 ```
 
 - `five_hour` and `seven_day` come from `rate_limits` in the statusline input. agent-swap ignores a `null` value, because `rate_limits` is absent on API billing.
+- agent-swap merges each window separately. A window in the input replaces the stored window only if it is not older or lower. Thus an old render cannot replace newer data. If the input has no data for a window, agent-swap keeps the stored window until its `resets_at`. After that time, it clears the window.
 - `api_until` is the end of the current API period. The desired mode is `API` while `now < api_until`.
 
 `sessions/<id>/session.json` is per supervisor:
@@ -82,7 +83,7 @@ The child process gets these environment variables:
 | Hook | Effect |
 |---|---|
 | `SessionStart` | idle, not rate-limited, `started_at = now` |
-| `UserPromptSubmit` | busy |
+| `UserPromptSubmit` | busy, not rate-limited |
 | `Stop` | idle, not rate-limited |
 | `StopFailure` | idle, and rate-limited if `error == "rate_limit"` (`Stop` does **not** fire on API errors) |
 
@@ -93,7 +94,7 @@ The child process gets these environment variables:
 `Trigger` operates only while the desired mode is `SUB`. It uses the first rule that matches:
 
 1. **Any window that has not reset reaches the threshold.** Set `resets_at` to the latest reset among those windows.
-2. **Otherwise, a session hit a rate-limit error.** Set `resets_at` to the reset of the fullest window. If no window data exists, use now + 5 h.
+2. **Otherwise, a session hit a rate-limit error.** Set `resets_at` to the reset of the fullest window that has not reset. If no such window exists, use now + 5 h. `UserPromptSubmit` clears the flag, so an old rate limit cannot start a new trigger.
 3. **Otherwise**, do nothing.
 
 When it triggers, it sets `api_until = resets_at + switch_back_delay`.
@@ -108,17 +109,20 @@ When it triggers, it sets `api_until = resets_at + switch_back_delay`.
   │ Noop │                     │ Handoff pending │                 │ /exit → │
   └──────┘ ◀───────────────── └─────────────────┘                 │ relaunch│
                                                                     └─────────┘
+                  desired ≠ handoff target
+  Noop ◀──────────────────────────────────── Handoff pending   (Cancel)
 ```
 
 - **No handoff pending:**
   - If the desired mode equals the current mode, do nothing.
   - If the desired mode is `API` and the session is rate-limited and idle, switch immediately. The session has no work to stop. A message would only cause one more failed turn.
   - Otherwise, start a handoff: type the message, which names a one-time ready file.
+- **Handoff pending, but its target is no longer the desired mode:** cancel. The supervisor deletes the ready file and clears the handoff. This occurs also while the session is busy.
 - **Handoff pending.** Nothing happens while the session is busy. Once it is idle, it is ready if any of these hold:
   - **Toward API:** the ready file exists, the session is rate-limited, or peak usage is ≥ 100%. This wait has no timeout, because the subscription operates until the limit.
   - **Toward SUB:** the ready file exists, or `switch_back_timeout` has passed since the handoff started.
 
-When ready, the supervisor types `/exit`. If the child does not exit in 30 s, the supervisor types `/exit` again. After the child exits, the supervisor starts the new child. It waits up to 30 s for `SessionStart`, then 2 s more. Then it types the resume message.
+When ready, the supervisor reads the Claude session ID. If the ID is empty, it does not switch and tries again at the next poll. Otherwise it types `/exit`. If the child does not exit in 30 s, the supervisor types `/exit` again. After the child exits, the supervisor reads the desired mode again and starts the new child in that mode. The relaunch gets only the persistent user arguments. It drops the prompt and the session options (`--continue`, `--resume`, `--session-id`, `--fork-session`, `--print`, `--from-pr`, `--teleport`, `--cloud`, `--tmux`, `--bg`/`--background`, `--desktop`). It keeps `-w`/`--worktree`.. It waits up to 30 s for `SessionStart`, then 2 s more. Then it types the resume message.
 
 ## Verified Claude Code behaviors
 

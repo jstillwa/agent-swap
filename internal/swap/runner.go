@@ -57,16 +57,31 @@ func nonce() string {
 	return hex.EncodeToString(b)
 }
 
-func other(m Mode) Mode {
-	if m == API {
-		return Sub
+// childEnv drops inherited Anthropic credential, base-URL and cloud-provider
+// variables so only the settings agent-swap passes decide billing.
+// CLAUDE_CODE_OAUTH_TOKEN stays: it can be the subscription login.
+func childEnv(environ []string) []string {
+	var out []string
+	for _, kv := range environ {
+		switch k, _, _ := strings.Cut(kv, "="); k {
+		case "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_CUSTOM_HEADERS",
+			"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+			"ANTHROPIC_BEDROCK_BASE_URL", "ANTHROPIC_VERTEX_BASE_URL", "ANTHROPIC_FOUNDRY_BASE_URL",
+			"ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_FOUNDRY_RESOURCE":
+		default:
+			out = append(out, kv)
+		}
 	}
-	return API
+	return out
 }
 
 // Run supervises claude until it exits without a pending switch, and returns
 // claude's exit code.
 func (r *Runner) Run(ctx context.Context) (int, error) {
+	acct, err := Load[Account](AccountPath(r.Cfg.StateDir))
+	if err != nil {
+		return 1, fmt.Errorf("%s: %w; fix or delete it to reset the shared state", AccountPath(r.Cfg.StateDir), err)
+	}
 	for _, m := range []Mode{Sub, API} {
 		b, err := SettingsJSON(r.Exe, m, r.Target, r.Cfg.Targets[r.Target])
 		if err != nil {
@@ -78,17 +93,18 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 	}
 	r.session = strings.TrimSpace(r.tmuxOut("display-message", "-p", "-t", r.Pane, "#{session_id}"))
 	r.tmux("set-option", "-t", r.session, "status-right-length", "160")
-	acct, _ := Load[Account](AccountPath(r.Cfg.StateDir))
 	mode, resume, welcome := acct.Desired(time.Now()), "", ""
 	for {
 		_ = Update(SessionPath(r.Dir), func(s *Session) { s.Idle, s.RateLimited = true, false })
-		args := []string{"--settings", r.settingsPath(mode)}
+		args := r.ClaudeArgs
 		if resume != "" {
-			args = append(args, "--resume", resume)
+			args = append([]string{"--resume", resume}, ReplayArgs(args)...)
 		}
-		cmd := exec.CommandContext(ctx, r.Cfg.ClaudeBin, append(args, r.ClaudeArgs...)...)
+		// Our --settings goes last so a user --settings cannot override the hooks or apiKeyHelper.
+		args = append(args[:len(args):len(args)], "--settings", r.settingsPath(mode))
+		cmd := exec.CommandContext(ctx, r.Cfg.ClaudeBin, args...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		cmd.Env = append(os.Environ(),
+		cmd.Env = append(childEnv(os.Environ()),
 			EnvSessionDir+"="+r.Dir, EnvStateDir+"="+r.Cfg.StateDir, EnvConfig+"="+r.CfgPath,
 			EnvStatusline+"="+r.userStatusline())
 		launched := time.Now()
@@ -98,7 +114,7 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 		}
 		done := make(chan error, 1)
 		go func() { done <- cmd.Wait() }()
-		next, err := r.supervise(ctx, mode, done, launched, welcome)
+		next, sid, err := r.supervise(ctx, mode, done, launched, welcome)
 		if next == "" {
 			r.Log.Printf("claude exited: %v", err)
 			var ee *exec.ExitError
@@ -107,37 +123,47 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 			}
 			return 0, err
 		}
-		s, _ := Load[Session](SessionPath(r.Dir))
-		resume, mode, welcome = s.ClaudeSessionID, next, ""
-		if resume != "" {
-			welcome = r.Cfg.ReturnResumeMessage
-			if mode == API {
-				welcome = r.Cfg.ResumeMessage
-			}
-			welcome = Render(welcome, map[string]string{"target": r.Target})
+		if a, err := Load[Account](AccountPath(r.Cfg.StateDir)); err == nil {
+			next = a.Desired(time.Now()) // the desired mode may have moved during the exit
 		}
+		resume, mode, welcome = sid, next, r.Cfg.ReturnResumeMessage
+		if mode == API {
+			welcome = r.Cfg.ResumeMessage
+		}
+		welcome = Render(welcome, map[string]string{"target": r.Target})
 		r.notify(fmt.Sprintf("Switched to %s", r.modeLabel(mode)))
 	}
 }
 
-// supervise polls until claude exits. It returns the mode to relaunch in, or
-// "" when claude exited on its own.
-func (r *Runner) supervise(ctx context.Context, mode Mode, done <-chan error, launched time.Time, welcome string) (Mode, error) {
+// supervise polls until claude exits. It returns the mode to relaunch in and
+// the session id to resume, or "" when claude exited on its own.
+func (r *Runner) supervise(ctx context.Context, mode Mode, done <-chan error, launched time.Time, welcome string) (Mode, string, error) {
 	tick := time.NewTicker(r.Cfg.Poll.Duration)
 	defer tick.Stop()
 	var ph *Phase
 	var pending Mode
+	var sid, quiet string
+	logOnce := func(msg string) { // repeat only when the message changes
+		if msg != quiet {
+			r.Log.Print(msg)
+			quiet = msg
+		}
+	}
 	var exitSent time.Time
 	for {
 		select {
 		case err := <-done:
-			return pending, err
+			return pending, sid, err
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", "", ctx.Err()
 		case <-tick.C:
 		}
 		now := time.Now()
-		s, _ := Load[Session](SessionPath(r.Dir))
+		s, err := Load[Session](SessionPath(r.Dir))
+		if err != nil {
+			logOnce("skip tick: " + err.Error())
+			continue
+		}
 		if welcome != "" && (s.StartedAt >= launched.Unix() || now.Sub(launched) > 30*time.Second) {
 			time.Sleep(r.Settle)
 			r.send(welcome)
@@ -151,41 +177,57 @@ func (r *Runner) supervise(ctx context.Context, mode Mode, done <-chan error, la
 			continue
 		}
 		var acct Account
-		_ = Update(AccountPath(r.Cfg.StateDir), func(a *Account) {
+		if err := Update(AccountPath(r.Cfg.StateDir), func(a *Account) {
 			if Trigger(a, now, r.Cfg, mode == Sub && s.RateLimited) {
 				r.Log.Printf("trigger: api until %s", time.Unix(a.APIUntil, 0))
 			}
 			acct = *a
-		})
+		}); err != nil {
+			logOnce("skip tick: " + err.Error())
+			continue
+		}
 		touched := false
 		if ph != nil {
 			_, err := os.Stat(ph.File)
 			touched = err == nil
 		}
-		switch Decide(now, r.Cfg, acct, s, mode, ph, touched) {
+		d := Decide(now, r.Cfg, acct, s, mode, ph, touched)
+		if d != Switch || s.ClaudeSessionID != "" {
+			quiet = "" // a successful tick re-arms the once-only messages
+		}
+		switch d {
 		case StartHandoff:
-			ph = r.startHandoff(now, acct, mode)
+			ph = r.startHandoff(now, acct)
+		case Cancel:
+			r.Log.Printf("cancel handoff to %s: desired mode changed", ph.To)
+			_ = os.Remove(ph.File)
+			ph = nil
 		case Switch:
-			r.Log.Printf("switch %s -> %s (touched=%v rate_limited=%v)", mode, other(mode), touched, s.RateLimited)
+			if s.ClaudeSessionID == "" {
+				logOnce("switch blocked: no claude session id yet")
+				break
+			}
+			to := acct.Desired(now)
+			r.Log.Printf("switch %s -> %s (touched=%v rate_limited=%v)", mode, to, touched, s.RateLimited)
 			if ph != nil {
 				_ = os.Remove(ph.File)
 			}
-			ph, pending, exitSent = nil, other(mode), now
+			ph, pending, sid, exitSent = nil, to, s.ClaudeSessionID, now
 			r.send("/exit")
 		}
 		r.tmux("set-option", "-t", r.session, "status-right", StatusText(now, r.Cfg, r.Target, acct, mode, ph))
 	}
 }
 
-func (r *Runner) startHandoff(now time.Time, a Account, mode Mode) *Phase {
-	ph := &Phase{To: other(mode), File: filepath.Join(r.Dir, "ready-"+nonce()), Started: now.Unix()}
+func (r *Runner) startHandoff(now time.Time, a Account) *Phase {
+	ph := &Phase{To: a.Desired(now), File: filepath.Join(r.Dir, "ready-"+nonce()), Started: now.Unix()}
 	pct, _, _ := a.Peak(now)
 	tmpl := r.Cfg.HandoffMessage
 	if ph.To == Sub {
 		tmpl = r.Cfg.ReturnMessage
 	}
 	r.send(Render(tmpl, map[string]string{
-		"file": ph.File, "pct": fmt.Sprintf("%.0f", pct), "target": r.Target,
+		"file": shellQuote(ph.File), "pct": fmt.Sprintf("%.0f", pct), "target": r.Target,
 		"resets_at": time.Unix(a.ResetsAt, 0).Format("Mon 15:04"),
 	}))
 	r.Log.Printf("handoff to %s, waiting for %s", ph.To, ph.File)

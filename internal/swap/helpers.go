@@ -41,8 +41,20 @@ func Statusline(in io.Reader, out io.Writer, now time.Time) error {
 			_ = Update(SessionPath(dir), func(s *Session) { s.ClaudeSessionID, s.UpdatedAt = p.SessionID, now.Unix() })
 		}
 		if sd := os.Getenv(EnvStateDir); sd != "" && p.RateLimits != nil { // null on API billing
+			// Usage in a window never drops, so a live stored window yields only
+			// to a later window or a higher reading of the same one.
+			keep := func(stored, got *Window) *Window {
+				if stored == nil || stored.ResetsAt <= now.Unix() {
+					return got
+				}
+				if got == nil || got.ResetsAt < stored.ResetsAt || got.ResetsAt == stored.ResetsAt && got.UsedPct < stored.UsedPct {
+					return stored
+				}
+				return got
+			}
 			_ = Update(AccountPath(sd), func(a *Account) {
-				a.FiveHour, a.SevenDay, a.UpdatedAt = p.RateLimits.FiveHour, p.RateLimits.SevenDay, now.Unix()
+				a.FiveHour, a.SevenDay = keep(a.FiveHour, p.RateLimits.FiveHour), keep(a.SevenDay, p.RateLimits.SevenDay)
+				a.UpdatedAt = now.Unix()
 			})
 		}
 	}
@@ -75,7 +87,7 @@ func Hook(event string, in io.Reader, now time.Time) error {
 		case "SessionStart":
 			s.Idle, s.RateLimited, s.StartedAt = true, false, now.Unix()
 		case "UserPromptSubmit":
-			s.Idle = false
+			s.Idle, s.RateLimited = false, false
 		case "Stop":
 			s.Idle, s.RateLimited = true, false
 		case "StopFailure": // Stop does not fire on API errors

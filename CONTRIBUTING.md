@@ -44,7 +44,7 @@ You can test a real switch before your real limit. Use a threshold below your cu
 
 ```sh
 cat > /tmp/cs.toml <<'EOF'
-state_dir = "/tmp/cs-state"
+state_dir = "/tmp/as-state"
 poll = "3s"
 switch_back_timeout = "20s"
 notify = false
@@ -53,11 +53,11 @@ agent-swap --config /tmp/cs.toml --threshold 1 -- --model haiku
 ```
 
 1. Send one prompt. Claude receives the handoff message, touches the file, and resumes on API billing.
-2. To test the switch back, set `api_until` in `/tmp/cs-state/account.json` to the current Unix time.
+2. To test the switch back, set `api_until` in `/tmp/as-state/account.json` to the current Unix time.
 
 Note: with `--threshold 1`, the session switches to the API again when the subscription reports usage. This is correct behavior.
 
-The supervisor log is at `/tmp/cs-state/sessions/*/log`.
+The supervisor log is at `/tmp/as-state/sessions/*/log`.
 
 ## Claude Code compatibility
 

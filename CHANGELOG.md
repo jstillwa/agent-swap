@@ -4,6 +4,26 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stale handoff.** A pending handoff is cancelled when the desired mode changes. The supervisor deletes the ready file.
+- **Relaunch mode.** After the child exits, the supervisor reads the desired mode again and relaunches claude in that mode.
+- **Replayed arguments.** A relaunch drops the prompt and the session options (`--continue`, `--resume`, `--session-id`, `--fork-session`, `--print`, `--from-pr`, `--teleport`, `--cloud`, `--tmux`, `--bg`/`--background`, `--desktop`). It keeps `-w`/`--worktree`.
+- **State errors.** The supervisor stops at startup if it cannot read `account.json`. A failed read or write during a poll skips that poll.
+- **Missing session ID.** The supervisor does not send `/exit` until it knows the Claude session ID. It resumes the ID it read before `/exit`.
+- **Config validation.** The launcher and `run` check the config before tmux or claude starts. A bad value gives exit code 2 and names the key.
+- **Inherited environment.** The child claude process does not get these variables from the shell: `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_CUSTOM_HEADERS`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_VERTEX_BASE_URL`, `ANTHROPIC_FOUNDRY_BASE_URL`, `ANTHROPIC_FOUNDRY_API_KEY` and `ANTHROPIC_FOUNDRY_RESOURCE`. It keeps `CLAUDE_CODE_OAUTH_TOKEN`.
+- **Settings order.** agent-swap puts its `--settings` after the user arguments. A user `--settings` cannot override the hooks or `apiKeyHelper`.
+- **Statusline merge.** A statusline update with one window keeps the other stored window until its reset. An older or lower value does not replace newer data.
+- **Rate-limited flag.** `UserPromptSubmit` clears it. Thus an old rate limit cannot start a new API period.
+- **`status` config.** `agent-swap status` accepts `--config PATH` and reads `$AGENT_SWAP_CONFIG`. The flag has priority.
+- **Ready-file path.** The `{file}` placeholder is shell-quoted when the path has special characters.
+- **README.** The FAQ says that a forced return to the subscription holds only while usage is below the threshold.
+
+### Changed
+
+- **Project name.** The project is now agent-swap (was claude-swap). The binary, module path, config and state directories, and the `AGENT_SWAP_*` environment variables use the new name. The tmux session prefix `cs-` becomes `as-`.
+
 ### Planned
 
 - Linux desktop notifications (`notify-send`).

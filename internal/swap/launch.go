@@ -11,9 +11,9 @@ import (
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
 
-// SessionName is cs-<dirname>, made unique against existing tmux sessions.
+// SessionName is as-<dirname>, made unique against existing tmux sessions.
 func SessionName(dir string, exists func(string) bool) string {
-	base := "cs-" + unsafeName.ReplaceAllString(filepath.Base(dir), "-")
+	base := "as-" + unsafeName.ReplaceAllString(filepath.Base(dir), "-")
 	name := base
 	for i := 2; exists(name); i++ {
 		name = base + "-" + strconv.Itoa(i)

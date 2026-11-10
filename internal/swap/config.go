@@ -122,6 +122,32 @@ func (c Config) ResolveTarget(flag string) (string, error) {
 	return name, nil
 }
 
+// Validate checks the settings agent-swap depends on; errors name the key.
+func (c Config) Validate(target string) error {
+	t, ok := c.Targets[target]
+	switch {
+	case !(c.Threshold > 0 && c.Threshold <= 100):
+		return fmt.Errorf("threshold must be > 0 and <= 100, got %v", c.Threshold)
+	case c.SwitchBackDelay.Duration < 0:
+		return errors.New("switch_back_delay must not be negative")
+	case c.SwitchBackTimeout.Duration <= 0:
+		return errors.New("switch_back_timeout must be positive")
+	case c.Poll.Duration <= 0:
+		return errors.New("poll must be positive")
+	case c.ClaudeBin == "":
+		return errors.New("claude_bin must not be empty")
+	case c.TmuxBin == "":
+		return errors.New("tmux_bin must not be empty")
+	case c.StateDir == "":
+		return errors.New("state_dir must not be empty")
+	case !ok:
+		return fmt.Errorf("unknown target %q", target)
+	case strings.TrimSpace(t.KeyCmd) == "":
+		return fmt.Errorf("targets.%s.key_cmd must not be empty", target)
+	}
+	return nil
+}
+
 // Render fills {file} {pct} {target} {resets_at} placeholders.
 func Render(tmpl string, vars map[string]string) string {
 	for k, v := range vars {
