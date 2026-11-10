@@ -8,28 +8,44 @@ import (
 	"syscall"
 )
 
-// Window is one subscription rate-limit window from the statusline JSON.
+// Window is one rate-limit window (claude: "5h", "7d"; codex: "primary", "secondary").
 type Window struct {
 	UsedPct  float64 `json:"used_percentage"`
 	ResetsAt int64   `json:"resets_at"` // unix seconds
 }
 
-// Account is shared by every wrapped session (usage is account-wide).
-type Account struct {
-	FiveHour  *Window `json:"five_hour,omitempty"`
-	SevenDay  *Window `json:"seven_day,omitempty"`
-	UpdatedAt int64   `json:"updated_at"`
-	APIUntil  int64   `json:"api_until"` // API billing desired while now < APIUntil
-	ResetsAt  int64   `json:"resets_at"` // reset that caused the current API period
+// Usage is one harness's limit state.
+type Usage struct {
+	Windows      map[string]*Window `json:"windows,omitempty"`
+	BlockedUntil int64              `json:"blocked_until,omitempty"` // harness unavailable while now < BlockedUntil
+	ResetsAt     int64              `json:"resets_at,omitempty"`     // reset that caused the block
+	UpdatedAt    int64              `json:"updated_at,omitempty"`
 }
 
-// Session is per wrapped Claude process, written by hooks and the statusline.
+// Account is shared by every wrapped session (usage is account-wide), keyed
+// by harness name.
+type Account struct {
+	Harnesses map[string]*Usage `json:"harnesses"`
+}
+
+// Get returns the usage entry for a harness, creating it.
+func (a *Account) Get(name string) *Usage {
+	if a.Harnesses == nil {
+		a.Harnesses = map[string]*Usage{}
+	}
+	if a.Harnesses[name] == nil {
+		a.Harnesses[name] = &Usage{}
+	}
+	return a.Harnesses[name]
+}
+
+// Session is per supervised harness process, written by hooks and Poll.
 type Session struct {
-	ClaudeSessionID string `json:"claude_session_id"`
-	Idle            bool   `json:"idle"`
-	RateLimited     bool   `json:"rate_limited"`
-	StartedAt       int64  `json:"started_at"` // last SessionStart hook
-	UpdatedAt       int64  `json:"updated_at"`
+	NativeID    string `json:"native_id"` // the harness's own session/conversation id
+	Idle        bool   `json:"idle"`
+	RateLimited bool   `json:"rate_limited"`
+	StartedAt   int64  `json:"started_at"` // last SessionStart hook
+	UpdatedAt   int64  `json:"updated_at"`
 }
 
 // Load reads JSON at path into a T; a missing file yields the zero value.

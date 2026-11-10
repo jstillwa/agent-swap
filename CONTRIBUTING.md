@@ -21,15 +21,19 @@ internal/swap/config.go     config file, defaults, message templates
 internal/swap/state.go      account.json / session.json, flock + atomic write
 internal/swap/logic.go      pure decision logic (Trigger, Decide, StatusText)
 internal/swap/helpers.go    statusline, hook, key, generated --settings
+internal/swap/adapter.go    harness interface (Adapter, Runtime, Launch)
+internal/swap/adapter_*.go  one adapter per kind: command, poll, transcript
+internal/swap/plugins/      pi extension and opencode plugin (embedded)
 internal/swap/runner.go     tmux pane supervisor
 internal/swap/launch.go     tmux session/window creation
-docs/ARCHITECTURE.md        design and verified Claude Code behaviors
+docs/ARCHITECTURE.md        design and verified harness behaviors
 ```
 
 ## Making a change
 
 1. **Write the test first.** Put decision changes in `logic.go`, tested by `logic_test.go`. Keep I/O out of that file.
 2. **If you change the supervisor flow**, update `runner_test.go`. This test operates a real `Runner` with fake `tmux` and `claude` scripts.
+   **If you add or change a harness kind**, update its `adapter_<kind>_test.go`. Use fixtures in `testdata/`. Tests must not call a paid model.
 3. **Run the checks before you push:**
    ```sh
    gofmt -l .        # must print nothing
@@ -53,7 +57,7 @@ agent-swap --config /tmp/cs.toml --threshold 1 -- --model haiku
 ```
 
 1. Send one prompt. Claude receives the handoff message, touches the file, and resumes on API billing.
-2. To test the switch back, set `api_until` in `/tmp/as-state/account.json` to the current Unix time.
+2. To test the switch back, set `harnesses.api.blocked_until` in `/tmp/as-state/account.json` to the current Unix time.
 
 Note: with `--threshold 1`, the session switches to the API again when the subscription reports usage. This is correct behavior.
 

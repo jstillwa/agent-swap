@@ -7,23 +7,48 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
-// Environment passed to the wrapped claude (and so to its hooks and helpers).
+// Environment passed to every wrapped harness (and so to its hooks and plugins).
 const (
 	EnvSessionDir = "AGENT_SWAP_SESSION_DIR"
 	EnvStateDir   = "AGENT_SWAP_STATE_DIR"
 	EnvConfig     = "AGENT_SWAP_CONFIG"
+	EnvHarness    = "AGENT_SWAP_HARNESS" // harness name
+	EnvExe        = "AGENT_SWAP_EXE"     // absolute path of agent-swap
 	EnvStatusline = "AGENT_SWAP_USER_STATUSLINE"
 )
 
 func AccountPath(stateDir string) string { return filepath.Join(stateDir, "account.json") }
 func SessionPath(dir string) string      { return filepath.Join(dir, "session.json") }
 
-// Statusline records rate limits (account-wide) and the session id, then
-// renders the user's own statusline command so its output is unchanged.
+// MergeWindows stores fresh window readings in u. Usage in a window never
+// drops, so a live stored window yields only to a later window or a higher
+// reading of the same one.
+func MergeWindows(u *Usage, got map[string]*Window, now time.Time) {
+	if len(got) == 0 {
+		return
+	}
+	if u.Windows == nil {
+		u.Windows = map[string]*Window{}
+	}
+	for n, g := range got {
+		st := u.Windows[n]
+		if g == nil || st != nil && st.ResetsAt > now.Unix() &&
+			(g.ResetsAt < st.ResetsAt || g.ResetsAt == st.ResetsAt && g.UsedPct < st.UsedPct) {
+			continue
+		}
+		u.Windows[n] = g
+	}
+	u.UpdatedAt = now.Unix()
+}
+
+// Statusline records claude's rate limits (account-wide, under the harness
+// named by $AGENT_SWAP_HARNESS) and the session id, then renders the user's
+// own statusline command so its output is unchanged.
 func Statusline(in io.Reader, out io.Writer, now time.Time) error {
 	raw, err := io.ReadAll(in)
 	if err != nil {
@@ -37,24 +62,13 @@ func Statusline(in io.Reader, out io.Writer, now time.Time) error {
 		} `json:"rate_limits"`
 	}
 	if err := json.Unmarshal(raw, &p); err == nil {
-		if dir := os.Getenv(EnvSessionDir); dir != "" && p.SessionID != "" {
-			_ = Update(SessionPath(dir), func(s *Session) { s.ClaudeSessionID, s.UpdatedAt = p.SessionID, now.Unix() })
+		if dir := os.Getenv(EnvSessionDir); dir != "" && safeID(p.SessionID) {
+			_ = Update(SessionPath(dir), func(s *Session) { s.NativeID, s.UpdatedAt = p.SessionID, now.Unix() })
 		}
-		if sd := os.Getenv(EnvStateDir); sd != "" && p.RateLimits != nil { // null on API billing
-			// Usage in a window never drops, so a live stored window yields only
-			// to a later window or a higher reading of the same one.
-			keep := func(stored, got *Window) *Window {
-				if stored == nil || stored.ResetsAt <= now.Unix() {
-					return got
-				}
-				if got == nil || got.ResetsAt < stored.ResetsAt || got.ResetsAt == stored.ResetsAt && got.UsedPct < stored.UsedPct {
-					return stored
-				}
-				return got
-			}
+		sd, name := os.Getenv(EnvStateDir), os.Getenv(EnvHarness)
+		if sd != "" && name != "" && p.RateLimits != nil { // null on API billing
 			_ = Update(AccountPath(sd), func(a *Account) {
-				a.FiveHour, a.SevenDay = keep(a.FiveHour, p.RateLimits.FiveHour), keep(a.SevenDay, p.RateLimits.SevenDay)
-				a.UpdatedAt = now.Unix()
+				MergeWindows(a.Get(name), map[string]*Window{"5h": p.RateLimits.FiveHour, "7d": p.RateLimits.SevenDay}, now)
 			})
 		}
 	}
@@ -67,7 +81,22 @@ func Statusline(in io.Reader, out io.Writer, now time.Time) error {
 	return cmd.Run()
 }
 
-// Hook records idle/busy/rate-limit state for the session.
+var limitCode = regexp.MustCompile(`\b(402|429)\b`)
+
+// IsLimitError reports whether an error text means a usage or rate limit.
+func IsLimitError(s string) bool {
+	s = strings.ToLower(s)
+	for _, m := range []string{"rate_limit", "rate limit", "quota", "usage limit", "budget exceeded",
+		"resource_exhausted", "insufficient_balance"} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return limitCode.MatchString(s)
+}
+
+// Hook records idle/busy/rate-limit state for the session. Every harness's
+// hook or plugin calls it with optional JSON {"session_id", "error"}.
 func Hook(event string, in io.Reader, now time.Time) error {
 	dir := os.Getenv(EnvSessionDir)
 	if dir == "" {
@@ -79,20 +108,22 @@ func Hook(event string, in io.Reader, now time.Time) error {
 	}
 	_ = json.NewDecoder(in).Decode(&p)
 	return Update(SessionPath(dir), func(s *Session) {
-		if p.SessionID != "" {
-			s.ClaudeSessionID = p.SessionID
+		if safeID(p.SessionID) {
+			s.NativeID = p.SessionID
 		}
 		s.UpdatedAt = now.Unix()
 		switch event {
-		case "SessionStart":
-			s.Idle, s.RateLimited, s.StartedAt = true, false, now.Unix()
+		case "SessionStart": // Idle stays as the runner seeded it (busy when launched with a prompt)
+			s.RateLimited, s.StartedAt = false, now.Unix()
 		case "UserPromptSubmit":
 			s.Idle, s.RateLimited = false, false
 		case "Stop":
 			s.Idle, s.RateLimited = true, false
 		case "StopFailure": // Stop does not fire on API errors
 			s.Idle = true
-			s.RateLimited = p.Error == "rate_limit"
+			s.RateLimited = IsLimitError(p.Error)
+		case "LimitHit": // a retrying limit error (opencode): the turn is still running
+			s.RateLimited = true
 		}
 	})
 }
@@ -115,10 +146,11 @@ func Key(cfg Config, target string, out io.Writer) error {
 	return err
 }
 
-// SettingsJSON is the --settings payload for a mode. Hooks merge with the
+// SettingsJSON is claude's --settings payload; target "" means subscription
+// billing, otherwise API billing via that target. Hooks merge with the
 // user's own (verified), so nothing of theirs is replaced except statusLine,
 // which Statusline re-renders.
-func SettingsJSON(exe string, mode Mode, target string, t Target) ([]byte, error) {
+func SettingsJSON(exe, target string, t Target) ([]byte, error) {
 	q := shellQuote(exe)
 	hooks := map[string]any{}
 	for _, ev := range []string{"SessionStart", "UserPromptSubmit", "Stop", "StopFailure"} {
@@ -130,7 +162,7 @@ func SettingsJSON(exe string, mode Mode, target string, t Target) ([]byte, error
 		"statusLine": map[string]any{"type": "command", "command": q + " statusline"},
 		"hooks":      hooks,
 	}
-	if mode == API {
+	if target != "" {
 		s["apiKeyHelper"] = q + " key " + shellQuote(target)
 		if t.BaseURL != "" {
 			s["env"] = map[string]string{"ANTHROPIC_BASE_URL": t.BaseURL}

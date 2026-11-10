@@ -10,6 +10,8 @@ agent-swap runs [Claude Code](https://code.claude.com) inside tmux and watches y
 2. It restarts the **same conversation** on API billing. The API endpoint can be any Anthropic-compatible endpoint, for example an LLM gateway or your own Console key.
 3. After the limit resets, it moves the conversation back to the subscription.
 
+agent-swap can also use other coding agents as fallbacks: Codex CLI, pi, opencode and Antigravity CLI. See [Harnesses](#harnesses).
+
 ```
  SUB 72% (5h) · resets Mon 14:20                                    ← normal
  ⚠ 91% (5h) — TMUX DROPPING YOU IN 4% OF USAGE. Prepare for account cycle!
@@ -24,6 +26,7 @@ agent-swap runs [Claude Code](https://code.claude.com) inside tmux and watches y
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
+- [Harnesses](#harnesses)
 - [How a switch works](#how-a-switch-works)
 - [Commands](#commands)
 - [Files and state](#files-and-state)
@@ -138,18 +141,17 @@ agent-swap has no built-in target. Define at least one target. If you define mor
 
 ### Messages
 
-You can override the four messages agent-swap types into Claude. Use these placeholders: `{file}`, `{pct}`, `{target}` and `{resets_at}`.
+You can override the three messages agent-swap types into a harness. Use these placeholders: `{from}`, `{to}`, `{file}`, `{notes}`, `{context}`, `{reason}`, `{pct}` and `{resets_at}`. `{reason}` is the cause of the switch, for example the usage percentage or a limit error. The default handoff message uses it. `{file}` and `{notes}` are shell-quoted paths.
 
 | Key | Sent when | Must include |
 |---|---|---|
-| `handoff_message` | usage reaches the threshold | `{file}` |
-| `resume_message` | after the restart on API billing | |
-| `return_message` | after the reset, before going back | `{file}` |
-| `return_resume_message` | after the restart on the subscription | |
+| `handoff_message` | before a switch down the list (the current harness nears its limit) | `{file}` |
+| `return_message` | before a switch back up the list (a preferred harness is free again) | `{file}` |
+| `resume_message` | as the first prompt to the next harness | |
 
-The default handoff message:
+The default handoff message starts with `⚠ EMERGENCY SHUTDOWN PROCEDURE (agent-swap)`. It asks the agent to stop at a safe point, write handoff notes to `{notes}` and then run `touch {file}`. The default resume message:
 
-> ⚠ EMERGENCY SHUTDOWN PROCEDURE (agent-swap). Subscription usage at 95%. Pause all work immediately at the nearest safe point: finish or revert any half-applied edit, do not start new tool calls, and note any running background tasks in one line. Your session will be resumed on API billing (gateway) with full context. When ready, run: touch /…/ready-3f9c…
+> agent-swap moved this conversation from {from} to {to}. Read {context} — it has the handoff notes and the conversation so far — then continue the task.
 
 ### Other keys
 
@@ -170,45 +172,73 @@ The default handoff message:
 --poll DUR                 e.g. 10s
 ```
 
+## Harnesses
+
+A harness is one coding-agent CLI that agent-swap can run in the pane. List harnesses with `[[harness]]` tables. The order is the preference order. agent-swap runs the first harness that is not blocked. When that harness nears or hits its limit, agent-swap moves the conversation to the next harness. When a harness higher in the list is free again, agent-swap moves the conversation back.
+
+Without `[[harness]]` tables, the order is `claude`, then `api` (claude on the target from `default_target` or `--target`). This is the subscription/API behavior that the earlier sections describe.
+
+```toml
+[[harness]]
+name = "claude"
+kind = "claude"
+
+[[harness]]
+name = "codex"
+kind = "codex"
+args = ["-m", "gpt-5.5"]
+```
+
+[examples/config.toml](examples/config.toml) has a full example with four harnesses.
+
+| Key | Meaning |
+|---|---|
+| `name` | Required and unique. State and the status bar use it. |
+| `kind` | Required. One of `claude`, `codex`, `pi`, `opencode`, `agy`. |
+| `bin` | The executable. Default: `claude_bin` for `claude`, else the kind. |
+| `args` | Arguments that agent-swap always passes to this harness. |
+| `target` | `claude` only. Use API billing through this target. The target must exist and have a `key_cmd`. |
+| `threshold`, `cooldown` | Override the top-level values for this harness. |
+
+Arguments after `--` go to the first launch. A later launch gets them only if its harness has the same kind as the first harness.
+
+### Supported kinds
+
+`claude`, `codex`, `pi`, `opencode` and `agy`. All five passed a live switch. The [kinds table](docs/ARCHITECTURE.md#adapters) gives the tested version, the signal source and the transcript source of each kind.
+
+### Limits
+
+- **`claude` and `codex`** report usage percentages. agent-swap switches at the `threshold`, before the limit. It switches back at the window reset plus `switch_back_delay`. Codex on paid credits is not limited: only `rate_limit_reached_type` or a limit error counts.
+- **Other kinds** report no usage. agent-swap switches after a limit error. A limit error is text that contains `rate limit`, `429`, `quota`, `usage limit`, `budget exceeded`, `resource_exhausted`, `insufficient_balance` or `402`. If the error gives no reset time, the harness stays blocked for `cooldown`.
+- **If all harnesses are blocked**, agent-swap runs the harness that becomes free first.
+
+### How the conversation carries over
+
+Each harness keeps its own native session. At a switch, the agent writes handoff notes. agent-swap then gives the next harness a context file with the notes and the transcript it has not seen. A switch back resumes the native session of that harness. [Context building](docs/ARCHITECTURE.md#context-building) gives the steps. `context_max_bytes` (default 60000) limits the context file.
+
+### Known limits and unverified items
+
+- **Ping-pong.** A harness with no reset time is blocked only for `cooldown`. If it is still limited after that, agent-swap switches to it and away again once per `cooldown`.
+- **`OPENCODE_CONFIG`.** agent-swap sets it for opencode. It replaces any value that you set.
+- **Quit command for `codex`** is not tested. If the harness does not exit, agent-swap escalates. See [Decide](docs/ARCHITECTURE.md#decide-per-session).
+- **`agy` transcript.** Antigravity stores steps as protobuf in SQLite. agent-swap extracts only the readable text. The segment starts with `[agy transcript, lossy]`.
+- **`agy` quota text** is not tested. agent-swap looks for `Quota exhausted` and the limit-error words in the agy log. The real message can differ.
+
 ## How a switch works
 
-```
-   ┌──────────────── tmux pane ────────────────┐
-   │ agent-swap run   (supervisor)            │
-   │   └─ claude [--resume <id>] [args] --settings <generated>
-   │        ├─ statusline → agent-swap statusline ─┐
-   │        └─ hooks      → agent-swap hook <Ev>  ─┤
-   └────────────────────────────────────────────────┘
-                     ▲ send-keys          │ writes
-                     │                    ▼
-             ~/.local/state/agent-swap/account.json   (shared)
-                                   sessions/<id>/session.json
-```
+1. agent-swap records usage and idle state from the hooks, the plugins or the session files of the harness.
+2. When the current harness reaches the `threshold` or hits a limit, agent-swap types the handoff message into the pane. The message names a one-time *ready file* and a notes file.
+3. agent-swap waits for the ready file, a limit error or 100% usage. This wait has no timeout. A switch back up the list waits at most `switch_back_timeout`.
+4. When the harness is **idle**, agent-swap types its quit command. A turn is never cut off.
+5. agent-swap starts the next harness with the context file, or resumes its native session.
 
-**Subscription → API:**
-
-1. Claude Code sends `rate_limits` to the statusline on every update. agent-swap records it.
-2. When any window that has not reset yet reaches the `threshold`, agent-swap types the handoff message into the pane. The message names a one-time *ready file*.
-3. agent-swap then waits, **with no timeout**, for one of these:
-   - Claude runs `touch <file>`.
-   - A request fails with a rate-limit error (the `StopFailure` hook with `error: rate_limit`).
-   - Usage reaches 100%.
-4. When Claude is **idle**, agent-swap sends `/exit`. Idle means its last turn ended, as reported by the `Stop` or `StopFailure` hook. A turn is never cut off.
-5. agent-swap relaunches `claude --resume <session-id>` with the target's `apiKeyHelper` and `ANTHROPIC_BASE_URL`, then types the resume message.
-
-**API → subscription:**
-
-1. This starts at the stored reset time plus `switch_back_delay`.
-2. The steps are the same, except the wait for the ready file is limited to `switch_back_timeout`. After that, the switch happens at the next idle point.
-3. The API session continues to operate during the wait.
-
-**With several sessions:** Anthropic counts usage across your whole account. Thus all wrapped sessions share `account.json` and switch together. Unwrapped `claude` sessions also use the same limits, but agent-swap does not manage them.
+All wrapped sessions share `account.json` and switch together. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#decision-logic) gives the exact rules.
 
 ## Commands
 
 ```sh
 agent-swap [flags] [-- claude args]   # launch in tmux (the normal entry point)
-agent-swap status [--config PATH]     # shared usage state and the desired mode
+agent-swap status [--config PATH]     # per-harness usage and the desired harness
 agent-swap --help
 ```
 
@@ -217,7 +247,7 @@ Claude Code and tmux call these internal subcommands:
 ```sh
 agent-swap run [flags] [-- claude args]   # the pane supervisor
 agent-swap statusline                     # statusLine command
-agent-swap hook <Event>                   # SessionStart | UserPromptSubmit | Stop | StopFailure
+agent-swap hook <Event>                   # SessionStart | UserPromptSubmit | Stop | StopFailure | LimitHit
 agent-swap key <target>                   # apiKeyHelper
 ```
 
@@ -228,13 +258,17 @@ agent-swap key <target>                   # apiKeyHelper
 | Path | Contents |
 |---|---|
 | `~/.config/agent-swap/config.toml` | your configuration |
-| `~/.local/state/agent-swap/account.json` | the latest rate limits, `api_until`, `resets_at` (shared and locked) |
-| `~/.local/state/agent-swap/sessions/<id>/session.json` | Claude session ID, idle/busy state, rate-limit flag |
+| `~/.local/state/agent-swap/account.json` | per harness: usage windows, `blocked_until`, `resets_at` (shared and locked) |
+| `~/.local/state/agent-swap/sessions/<id>/session.json` | native session ID of the running harness, idle/busy state, rate-limit flag |
+| `$TMPDIR/agent-swap-<session>/` | the ready and notes files. A sandboxed codex can write there. agent-swap removes this directory on a clean exit. |
+| `~/.local/state/agent-swap/sessions/<id>/{segment,context}-*.md` | transcript segments and the context file for the next harness |
+| `~/.local/state/agent-swap/sessions/<id>/agent-swap-pi.ts`, `opencode.json`, `agent-swap-opencode.js` | the generated pi extension and opencode plugin |
 | `~/.local/state/agent-swap/sessions/<id>/log` | the supervisor's log: triggers, handoffs, switches |
-| `~/.local/state/agent-swap/sessions/<id>/{sub,api}.settings.json` | the generated `--settings` files (no secrets) |
+| `~/.local/state/agent-swap/sessions/<id>/<name>.settings.json` | the generated claude `--settings` files (no secrets) |
 
 ## Caveats
 
+- **Every harness must already trust the project directory.** Claude Code and Codex each show a folder-trust dialog in a new directory. An unattended switch stops at that dialog. Start each harness in the directory once and accept the dialog before you use agent-swap there.
 - **Background work stops at a switch.** `/exit` stops Claude's background shell commands and subagents. The handoff message tells Claude to list them. After the resume, Claude can start them again.
 - **claude.ai connectors are off on API billing.** Claude Code turns off claude.ai MCP connectors whenever a credential other than your claude.ai login is in use.
 - **Built-in auto-continue doesn't run in wrapped sessions.** agent-swap switches billing instead of waiting.
@@ -261,7 +295,7 @@ agent-swap key <target>                   # apiKeyHelper
 
 **Does the conversation really continue?** Yes. `claude --resume <id>` reloads the full transcript. Each provider has its own prompt cache. Thus the first request after a switch writes the full cache again.
 
-**Can I force a switch?** Yes. Edit `api_until` in `account.json`. Set it to a future Unix time for API billing. Set it to `0` for the subscription. A forced return to the subscription stays only while usage is below the threshold. If usage is at or above the threshold, the next poll starts a new API period.
+**Can I force a switch?** Yes. Edit `harnesses.<name>.blocked_until` in `account.json`. Set it to a future Unix time to move away from that harness. Set it to `0` to allow it again. A forced return stays only while the harness's usage is below the threshold. If usage is at or above the threshold, the next poll blocks it again.
 
 ## Documentation
 

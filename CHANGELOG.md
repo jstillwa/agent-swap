@@ -4,6 +4,17 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+
+- **Harnesses.** A config can list `[[harness]]` tables in preference order. Supported kinds: `claude`, `codex`, `pi`, `opencode` and `agy`. agent-swap runs the first harness that is not blocked.
+- **Switch down and back.** agent-swap moves the conversation to the next harness at the threshold or at a limit error. It moves back when a preferred harness is free again.
+- **Conversation carry-over.** At a switch, agent-swap writes handoff notes, transcript segments and a context file for the next harness. A switch back resumes the native session of that harness.
+- **Signals per kind.** `pi` gets an extension and `opencode` gets a plugin. Both call `agent-swap hook`. The generated opencode config allows `permission.external_directory` for the session directory and the handoff directory only. agent-swap polls the session files of `codex` and `agy`.
+- **`LimitHit` hook event.** A harness reports a limit while it retries.
+- **CLI checks.** `agent-swap --config X status` stops with exit code 2 and asks for the subcommand first. `--target` with `[[harness]]` tables prints a warning.
+- **Config keys.** `cooldown` (default 1 h) blocks a harness after a limit error with no known reset. `context_max_bytes` (default 60000) limits the context file.
+- **`status`** shows usage and `blocked_until` per harness, and the desired harness.
+
 ### Fixed
 
 - **Stale handoff.** A pending handoff is cancelled when the desired mode changes. The supervisor deletes the ready file.
@@ -22,6 +33,9 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 
 ### Changed
 
+- **State format.** `account.json` holds one entry per harness. A file from 0.1 decodes to empty state.
+- **Messages.** `resume_message` names the context file. New placeholders: `{from}`, `{to}`, `{notes}` and `{context}`. `return_resume_message` is removed.
+- **Settings files.** The claude settings file is `<name>.settings.json` (was `sub` and `api`).
 - **Project name.** The project is now agent-swap (was claude-swap). The binary, module path, config and state directories, and the `AGENT_SWAP_*` environment variables use the new name. The tmux session prefix `cs-` becomes `as-`.
 
 ### Planned

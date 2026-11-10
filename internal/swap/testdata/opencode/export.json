@@ -1,0 +1,63 @@
+{
+  "info": {
+    "id": "ses_synthetic",
+    "title": "Synthetic session",
+    "directory": "/work/proj"
+  },
+  "messages": [
+    {
+      "info": {
+        "id": "msg_1",
+        "sessionID": "ses_synthetic",
+        "role": "user"
+      },
+      "parts": [
+        {
+          "id": "prt_1",
+          "type": "text",
+          "text": "Show the synthetic config."
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_2",
+        "sessionID": "ses_synthetic",
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "id": "prt_2",
+          "type": "step-start"
+        },
+        {
+          "id": "prt_3",
+          "type": "reasoning",
+          "text": "REASONING SHOULD NOT APPEAR"
+        },
+        {
+          "id": "prt_4",
+          "type": "tool",
+          "tool": "bash",
+          "callID": "call_1",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cat synthetic.toml"
+            },
+            "output": "TOOL OUTPUT SHOULD NOT APPEAR"
+          }
+        },
+        {
+          "id": "prt_5",
+          "type": "text",
+          "text": "The synthetic config sets mode = demo."
+        },
+        {
+          "id": "prt_6",
+          "type": "step-finish"
+        }
+      ]
+    }
+  ]
+}

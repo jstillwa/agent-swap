@@ -21,9 +21,9 @@ func SessionName(dir string, exists func(string) bool) string {
 	return name
 }
 
-// Launch starts `exe run <args>` in tmux: a new window when already inside
+// StartTmux starts `exe run <args>` in tmux: a new window when already inside
 // tmux, otherwise a new attached session. It replaces the current process.
-func Launch(tmuxBin, exe string, runArgs []string) error {
+func StartTmux(tmuxBin, exe string, runArgs []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err

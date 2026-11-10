@@ -1,5 +1,5 @@
-// agent-swap runs Claude Code in tmux and moves the session to API billing
-// when subscription usage reaches the threshold, then back after the reset.
+// agent-swap runs an ordered list of coding-agent harnesses in tmux. It moves
+// the conversation to the next harness when one nears its limit, then back.
 package main
 
 import (
@@ -17,19 +17,24 @@ import (
 )
 
 const usage = `usage:
-  agent-swap [flags] [-- claude args]   launch claude in tmux under agent-swap
-  agent-swap status [--config PATH]     show shared usage state ($AGENT_SWAP_CONFIG if no flag)
+  agent-swap [flags] [-- args]          launch the first available harness in tmux
+  agent-swap status [--config PATH]     show per-harness usage and the desired harness
+                                        ($AGENT_SWAP_CONFIG if no flag)
+
+Harnesses ([[harness]] in the config, in preference order) can be claude, codex,
+pi, opencode or agy. Without [[harness]], the order is claude, then claude on the
+API target. Args after -- go to the first harness.
 
 flags:
   --config PATH              config file (default ~/.config/agent-swap/config.toml)
-  --target NAME              API target profile (default: default_target, or the only target)
-  --threshold PCT            switch to API at this usage percent (default 95)
+  --target NAME              API target when no [[harness]] is set (default: default_target)
+  --threshold PCT            switch to the next harness at this usage percent (default 95)
   --switch-back-delay DUR    wait after the reset before switching back (default 10m)
   --switch-back-timeout DUR  max wait for the touch file when switching back (default 1h)
   --poll DUR                 usage check interval (default 30s)
 
-internal (used by tmux, hooks and Claude Code):
-  agent-swap run [flags] [-- claude args]
+internal (used by tmux and the harness hooks/plugins):
+  agent-swap run [flags] [-- args]
   agent-swap statusline | hook <Event> | key <target>
 `
 
@@ -78,12 +83,13 @@ func run(args []string) (int, error) {
 		if err != nil {
 			return 1, err
 		}
+		target, _ := cfg.ResolveTarget("") // "" → order is claude only
 		a, err := swap.Load[swap.Account](swap.AccountPath(cfg.StateDir))
 		if err != nil {
 			return 1, err
 		}
 		b, _ := json.MarshalIndent(a, "", "  ")
-		fmt.Printf("%s\ndesired mode: %s\n", b, a.Desired(now))
+		fmt.Printf("%s\ndesired harness: %s\n", b, swap.Desired(a, cfg.Order(target), now))
 		return 0, nil
 	case "run":
 		cfg, cfgPath, target, rest, err := parse(args[1:])
@@ -114,7 +120,7 @@ func run(args []string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	return 1, swap.Launch(cfg.TmuxBin, exe, args)
+	return 1, swap.StartTmux(cfg.TmuxBin, exe, args)
 }
 
 func parse(args []string) (cfg swap.Config, cfgPath, target string, rest []string, err error) {
@@ -128,6 +134,13 @@ func parse(args []string) (cfg swap.Config, cfgPath, target string, rest []strin
 	poll := fs.Duration("poll", 0, "")
 	if err = fs.Parse(args); err != nil {
 		return
+	}
+	if rest = fs.Args(); len(rest) > 0 && (len(rest) == len(args) || args[len(args)-len(rest)-1] != "--") {
+		switch rest[0] {
+		case "status", "run", "hook", "statusline", "key":
+			err = fmt.Errorf("put the subcommand first: agent-swap %s --config X", rest[0])
+			return
+		}
 	}
 	cfgPath = configPath(*p)
 	if cfg, err = swap.LoadConfig(cfgPath); err != nil {
@@ -145,13 +158,18 @@ func parse(args []string) (cfg swap.Config, cfgPath, target string, rest []strin
 			cfg.Poll.Duration = *poll
 		}
 	})
-	if target, err = cfg.ResolveTarget(*t); err == nil {
+	if len(cfg.Harnesses) == 0 { // the synthesized order needs a target
+		target, err = cfg.ResolveTarget(*t)
+	} else if *t != "" {
+		fmt.Fprintln(os.Stderr, "agent-swap: warning: --target is ignored when [[harness]] is configured")
+	}
+	if err == nil {
 		err = cfg.Validate(target)
 	}
 	if err != nil {
 		err = fmt.Errorf("%w (config: %s)", err, cfgPath)
 	}
-	return cfg, cfgPath, target, fs.Args(), err
+	return cfg, cfgPath, target, rest, err
 }
 
 func configPath(p string) string {
