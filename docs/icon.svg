@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+  <title id="t">agent-swap</title>
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f2b53c"/>
+    </marker>
+    <marker id="a2" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3ec9b0"/>
+    </marker>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#1c2130"/>
+  <!-- top arc: one agent hands the conversation over -->
+  <path d="M15.1 25.8 A18 18 0 0 1 48.3 24.4" fill="none" stroke="#f2b53c" stroke-width="3.5" stroke-linecap="round" marker-end="url(#a1)"/>
+  <!-- bottom arc: and back after the reset -->
+  <path d="M48.9 38.2 A18 18 0 0 1 15.7 39.6" fill="none" stroke="#3ec9b0" stroke-width="3.5" stroke-linecap="round" marker-end="url(#a2)"/>
+  <!-- terminal prompt -->
+  <path d="M25 27.5 L30 32 L25 36.5" fill="none" stroke="#f4f6fb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32.5 36.5 H39" stroke="#f4f6fb" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,4 +1,4 @@
-# agent-swap
+# <img src="docs/icon.svg" alt="" width="40" align="top"> agent-swap
 
 [![License: Hippocratic 3.0](https://img.shields.io/static/v1?label=Hippocratic%20License&message=HL3-FULL&labelColor=5e2751&color=bc8c3d)](https://firstdonoharm.dev/version/3/0/full.html)
 ![Go](https://img.shields.io/badge/go-1.27%2B-00ADD8)
