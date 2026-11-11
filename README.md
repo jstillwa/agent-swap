@@ -60,10 +60,10 @@ These agents can bill an API:
 - **Codex CLI.** A second codex harness can select an API provider with a profile, for example `args = ["-p", "api"]`. The profile file `$CODEX_HOME/api.config.toml` defines a provider that reads its key from an environment variable. Set that variable in your shell. This setup is not tested.
 - **Antigravity CLI.** agent-swap has no tested way to select API billing for agy.
 
-Claude Code also has two built-in options for a full window:
+Some agents have their own options for a full window:
 
-- **Usage credits.** You keep working past the limit, and your **Claude account** pays at API rates.
-- **Auto-continue.** The session waits and continues after the reset. This works only if the reset is less than 24 hours away.
+- **Credits.** Claude Code usage credits and Codex CLI credits let you keep working past the limit. The **same account** pays for the overflow.
+- **Auto-continue.** A Claude Code session can wait and continue after the reset. This works only if the reset is less than 24 hours away.
 
 agent-swap moves the conversation to a different bill or a different agent. Your context stays the same.
 
@@ -381,12 +381,17 @@ agent-swap key <target>            # Claude Code apiKeyHelper; reads $AGENT_SWAP
 ## Caveats
 
 - **Every agent must already trust the project directory.** Some agents, for example Claude Code and Codex CLI, show a folder-trust dialog in a new directory. An unattended switch stops at that dialog. Start each agent in the directory once and accept the dialog before you use agent-swap there.
+- **Every agent must already be logged in.** agent-swap does not log in for you. A login prompt stops an unattended switch in the same way.
+- **Usage is unknown until the first response.** Claude Code and Codex CLI report usage only after their first response. On API billing, Claude Code reports none. Other agents report no usage, so agent-swap reacts to their limit errors. When a harness is blocked, agent-swap stores the reset time.
+- **The tmux status bar is per session.** agent-swap sets `status-right` for the tmux session that it runs in.
+- **Agents other than Claude Code get your shell environment unchanged.** A provider key or endpoint variable in your shell, for example `OPENAI_API_KEY`, can change which account an agent bills.
+
+### Claude Code
+
 - **Your Anthropic environment variables do not reach Claude Code.** Before agent-swap starts claude, it removes `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_CUSTOM_HEADERS` and the Bedrock, Vertex and Foundry variables. Only the selected target decides billing. `CLAUDE_CODE_OAUTH_TOKEN` stays. [SECURITY.md](SECURITY.md) has the full list.
 - **claude.ai connectors are off on API billing.** Claude Code turns off claude.ai MCP connectors when you use a credential other than your claude.ai login.
-- **Built-in auto-continue does not run in agent-swap sessions.** agent-swap switches billing instead of waiting.
-- **Usage is unknown until the first response.** Claude Code gives `rate_limits` only after the first API response of a subscription session. On API billing it gives none. Codex CLI gives usage after its first `token_count` event. So agent-swap stores the reset time when the harness is blocked.
+- **Auto-continue does not run.** agent-swap switches at the threshold, before Claude Code's auto-continue starts.
 - **`--threshold` and `/usage` can differ.** The threshold uses the percentage that Claude Code reports. That value can differ from the claude.ai usage page.
-- **The tmux status bar is per session.** agent-swap sets `status-right` for the tmux session that it runs in.
 
 ## Troubleshooting
 
@@ -404,9 +409,9 @@ agent-swap key <target>            # Claude Code apiKeyHelper; reads $AGENT_SWAP
 
 ## FAQ
 
-**Is this against Anthropic's terms?** agent-swap only operates the official Claude Code CLI through its documented features: `--settings`, `--resume`, hooks, `apiKeyHelper` and the statusline. Your subscription and your API key each have their own terms. You must verify that your use obeys them. The same applies to each other agent and its provider.
+**Is this against the terms of an agent or a provider?** agent-swap runs only the official CLI of each agent, through its documented features: resume options, hooks, plugins and extensions, and the session files that the agent writes. For Claude Code it also uses `--settings`, `apiKeyHelper` and the statusline. Each subscription and each API key has its own terms. You must verify that your use obeys them.
 
-**Why not use usage credits?** If your Claude account can pay for the overflow, enable usage credits and do not use agent-swap for that. Usage credits need no restart.
+**Why not use the agent's own credits?** If the same account can pay for the overflow, for example with Claude Code usage credits or Codex CLI credits, use them for that. They need no restart. Use agent-swap when the overflow must go to a different bill or a different agent.
 
 **Does the conversation continue?** Yes. Each agent resumes its own session, and that session holds the full conversation. Each provider has its own prompt cache. So the first request after a switch writes the full cache again.
 
@@ -423,4 +428,4 @@ agent-swap key <target>            # Claude Code apiKeyHelper; reads $AGENT_SWAP
 
 Copyright 2026 John Stillwagen. The license is the [Hippocratic License 3.0](LICENSE.md) (HL3-FULL), an ethical source license. See <https://firstdonoharm.dev>.
 
-agent-swap is not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic, PBC.
+agent-swap is an independent project. It is not affiliated with or endorsed by Anthropic, OpenAI, Google, or the authors of pi or opencode. Claude, Claude Code, Codex, Antigravity and the other product names are trademarks of their owners.
