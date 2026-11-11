@@ -3,6 +3,7 @@ package swap
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -212,20 +213,26 @@ func TestAgyPollRateLimited(t *testing.T) {
 	}
 }
 
-func TestAgyTranscript(t *testing.T) {
+func TestAgyTurns(t *testing.T) {
 	requireSqlite(t)
 	rt := testRT(t)
 	blob := func(parts ...string) string { return "X'" + hex.EncodeToString([]byte(strings.Join(parts, ""))) + "'" }
-	sqliteExec(t, filepath.Join(tAgyDir(rt), "conversations", "conv-1.db"),
+	db := filepath.Join(tAgyDir(rt), "conversations", "conv-1.db")
+	sqliteExec(t, db,
 		"create table steps (idx integer primary key, step_type integer not null default 0, step_payload blob);"+
 			"insert into steps(idx, step_payload) values (1, "+blob("\x12\x05", "Assistant answers with synthetic gizmos", "\x01\x02xyz\x03", strings.Repeat("q q ", 500),
 			"\x04NoSpacesTokenIdentifier\x05onespace identifier\x06")+");"+
 			"insert into steps(idx, step_payload) values (0, "+blob("\x0a\x1f", "Synthetic user asks about widgets", "\x00\x00")+");")
-	got, err := adapterFor(t, "agy").Transcript("conv-1", rt)
-	if err != nil {
-		t.Fatal(err)
+	a := adapterFor(t, "agy")
+	turns, cur := readTurnsOK(t, a, "conv-1", "", rt)
+	if len(turns) != 1 || turns[0].Role != "assistant" || turns[0].Origin != "agy" {
+		t.Fatalf("Turns = %q, want one agy assistant turn", turns)
 	}
-	if !strings.HasPrefix(got, "[agy transcript, lossy]") {
+	if cur != "1" {
+		t.Errorf("cursor = %q, want the last step idx 1", cur)
+	}
+	got := turns[0].Text
+	if !strings.HasPrefix(got, "[lossy agy transcript]") {
 		t.Errorf("missing lossy prefix: %q", got)
 	}
 	assertTranscript(t, got, []string{"Synthetic user asks about widgets", "Assistant answers with synthetic gizmos"},
@@ -241,12 +248,34 @@ func TestAgyTranscript(t *testing.T) {
 	if kept < 400 || kept > 500 {
 		t.Errorf("long prose run kept %d bytes, want it capped at 500", kept)
 	}
+	// cursor delta: only steps after the cursor idx
+	if turns, c := readTurnsOK(t, a, "conv-1", cur, rt); len(turns) != 0 || c != cur {
+		t.Errorf("no new steps: Turns = %q, cursor %q", turns, c)
+	}
+	sqliteExec(t, db, "insert into steps(idx, step_payload) values (2, "+blob("\x0a", "A later step with new words", "\x00")+");")
+	turns, c := readTurnsOK(t, a, "conv-1", cur, rt)
+	if len(turns) != 1 || c != "2" || strings.Contains(turns[0].Text, "gizmos") || !strings.Contains(turns[0].Text, "A later step with new words") {
+		t.Errorf("delta Turns = %q, cursor %q; want only step 2", turns, c)
+	}
+	if _, _, err := a.Turns("conv-1", "x", rt); err == nil {
+		t.Error("want error for a bad cursor")
+	}
 }
 
-func TestAgyTranscriptMissing(t *testing.T) {
+func TestAgyTurnsMissing(t *testing.T) {
 	requireSqlite(t)
-	if _, err := adapterFor(t, "agy").Transcript("no-such-conv", testRT(t)); err == nil {
+	if _, _, err := adapterFor(t, "agy").Turns("no-such-conv", "", testRT(t)); err == nil {
 		t.Error("want error for a missing conversation db")
+	}
+}
+
+func TestAgyWriteNoMirror(t *testing.T) {
+	m := &Mirror{}
+	if _, err := adapterFor(t, "agy").Write(Harness{Name: "agy", Kind: "agy"}, m, tConv("X"), tStoreRT(t)); !errors.Is(err, errNoMirror) {
+		t.Errorf("agy Write err = %v, want errNoMirror", err)
+	}
+	if *m != (Mirror{}) {
+		t.Errorf("agy Write changed the mirror: %+v", m)
 	}
 }
 

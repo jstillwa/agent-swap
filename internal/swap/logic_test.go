@@ -11,7 +11,6 @@ var t0 = time.Unix(1_800_000_000, 0)
 func cfgT() Config {
 	c := Defaults()
 	c.SwitchBackDelay.Duration = 10 * time.Minute
-	c.SwitchBackTimeout.Duration = time.Hour
 	c.Cooldown.Duration = time.Hour
 	return c
 }
@@ -149,102 +148,71 @@ func TestTriggerAPIHarnessBlocksOnlyOnErrors(t *testing.T) {
 	}
 }
 
-func TestDecideNoPhase(t *testing.T) {
+func TestWant(t *testing.T) {
 	blocked := acct(map[string]*Usage{"claude": {BlockedUntil: t0.Unix() + 100}})
-	if got := Decide(t0, cfgT(), order3, Account{}, Session{Idle: true}, "claude", nil, false); got != Noop {
-		t.Fatalf("on desired: %v", got)
-	}
-	if got := Decide(t0, cfgT(), order3, blocked, Session{Idle: true}, "claude", nil, false); got != StartHandoff {
-		t.Fatalf("desired moved down: %v", got)
-	}
-	if got := Decide(t0, cfgT(), order3, Account{}, Session{}, "codex", nil, false); got != StartHandoff {
-		t.Fatalf("desired moved up: %v", got)
-	}
-	// Already rate limited and idle: nothing to wrap up, switch at once.
-	if got := Decide(t0, cfgT(), order3, blocked, Session{Idle: true, RateLimited: true}, "claude", nil, false); got != Switch {
-		t.Fatalf("rate-limited idle: %v", got)
-	}
-	if got := Decide(t0, cfgT(), order3, blocked, Session{RateLimited: true}, "claude", nil, false); got != StartHandoff {
-		t.Fatalf("rate-limited busy: %v", got)
-	}
-}
-
-func TestDecideDownTheListReadiness(t *testing.T) {
-	// claude blocked for 48h, so codex stays desired across the 24h probe.
-	a := acct(map[string]*Usage{"claude": {BlockedUntil: t0.Unix() + 48*3600,
-		Windows: map[string]*Window{"5h": wnd(97, t0.Add(30*time.Hour).Unix())}}})
-	ph := &Phase{To: "codex", Started: t0.Unix()}
 	cases := []struct {
-		name string
-		s    Session
-		file bool
-		want Action
+		name, pin, want string
+		a               Account
 	}{
-		{"waiting, no timeout", Session{Idle: true}, false, Noop},
-		{"touched but mid-turn", Session{Idle: false}, true, Noop},
-		{"touched and idle", Session{Idle: true}, true, Switch},
-		{"rate limited", Session{Idle: true, RateLimited: true}, false, Switch},
+		{"no pin", "", "claude", Account{}},
+		{"no pin, claude blocked", "", "codex", blocked},
+		{"pin wins over desired", "pi", "pi", Account{}},
+		{"pin holds while its harness is blocked", "claude", "claude", blocked},
+		{"unknown pin ignored", "aider", "codex", blocked},
 	}
 	for _, c := range cases {
-		for _, at := range []time.Time{t0, t0.Add(24 * time.Hour)} { // no timeout down the list
-			if got := Decide(at, cfgT(), order3, a, c.s, "claude", ph, c.file); got != c.want {
-				t.Errorf("%s at %v: got %v", c.name, at.Sub(t0), got)
-			}
+		if got := Want(c.a, order3, t0, c.pin); got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
 		}
 	}
-	a.Harnesses["claude"].Windows["5h"].UsedPct = 100
-	if got := Decide(t0, cfgT(), order3, a, Session{Idle: true}, "claude", ph, false); got != Switch {
-		t.Fatalf("100%% must switch, got %v", got)
-	}
 }
 
-func TestDecideUpTheListTimeout(t *testing.T) {
-	a := Account{} // claude free again
-	ph := &Phase{To: "claude", Started: t0.Unix()}
-	if got := Decide(t0.Add(59*time.Minute), cfgT(), order3, a, Session{Idle: true}, "codex", ph, false); got != Noop {
-		t.Fatalf("before timeout: %v", got)
-	}
-	if got := Decide(t0.Add(time.Hour), cfgT(), order3, a, Session{Idle: false}, "codex", ph, false); got != Noop {
-		t.Fatalf("timeout but busy: %v", got)
-	}
-	if got := Decide(t0.Add(time.Hour), cfgT(), order3, a, Session{Idle: true}, "codex", ph, false); got != Switch {
-		t.Fatalf("timeout and idle: %v", got)
-	}
-	if got := Decide(t0, cfgT(), order3, a, Session{Idle: true}, "codex", ph, true); got != Switch {
-		t.Fatalf("touched: %v", got)
-	}
-	// Moving up, a rate-limit flag alone is not readiness.
-	if got := Decide(t0, cfgT(), order3, a, Session{Idle: true, RateLimited: true}, "codex", ph, false); got != Noop {
-		t.Fatalf("up the list, rate limited: %v", got)
-	}
-}
-
-// A handoff whose target no longer matches the desired harness is cancelled,
-// whether or not the session is idle.
-func TestDecideCancelsStaleHandoff(t *testing.T) {
-	free := Account{}
-	claudeBlocked := acct(map[string]*Usage{"claude": {BlockedUntil: t0.Unix() + 3600}})
+// Decide switches only at idle, to the pin if set, else to Desired.
+func TestDecide(t *testing.T) {
+	blocked := acct(map[string]*Usage{"claude": {BlockedUntil: t0.Unix() + 100}})
+	idle, busy := Session{Idle: true}, Session{}
 	cases := []struct {
-		name string
-		a    Account
-		cur  string
-		ph   *Phase
+		name, cur, pin string
+		a              Account
+		s              Session
+		want           Action
 	}{
-		{"to codex but claude free", free, "claude", &Phase{To: "codex", Started: t0.Unix()}},
-		{"to claude but claude blocked", claudeBlocked, "pi", &Phase{To: "claude", Started: t0.Unix()}},
-		{"to pi but codex desired", claudeBlocked, "claude", &Phase{To: "pi", Started: t0.Unix()}},
+		{"on desired", "claude", "", Account{}, idle, Noop},
+		{"desired moved down, idle", "claude", "", blocked, idle, Switch},
+		{"desired moved down, busy", "claude", "", blocked, busy, Noop},
+		{"desired moved up, idle", "codex", "", Account{}, idle, Switch},
+		{"desired moved up, busy", "pi", "", Account{}, busy, Noop},
+		{"rate limited but busy", "claude", "", blocked, Session{RateLimited: true}, Noop},
+		{"rate limited and idle", "claude", "", blocked, Session{Idle: true, RateLimited: true, Failed: true}, Switch},
+		{"pinned elsewhere, idle", "claude", "pi", Account{}, idle, Switch},
+		{"pinned elsewhere, busy", "claude", "pi", Account{}, busy, Noop},
+		{"on the pin, desired differs", "pi", "pi", Account{}, idle, Noop},
+		{"on a blocked pin", "claude", "claude", blocked, idle, Noop},
+		{"unknown pin falls back to desired", "codex", "aider", blocked, idle, Noop},
+		{"unknown pin, not on desired", "pi", "aider", blocked, idle, Switch},
 	}
 	for _, c := range cases {
-		for _, s := range []Session{{Idle: true}, {Idle: false}, {Idle: true, RateLimited: true}} {
-			for _, touched := range []bool{false, true} {
-				if got := Decide(t0, cfgT(), order3, c.a, s, c.cur, c.ph, touched); got != Cancel {
-					t.Errorf("%s (session %+v touched=%v): got %v want Cancel", c.name, s, touched, got)
-				}
-			}
+		if got := Decide(t0, order3, c.a, c.s, c.cur, c.pin); got != c.want {
+			t.Errorf("%s: got %v want %v", c.name, got, c.want)
 		}
 	}
-	if got := Decide(t0, cfgT(), order3, claudeBlocked, Session{Idle: true}, "claude", &Phase{To: "codex", Started: t0.Unix()}, false); got == Cancel {
-		t.Fatal("matching phase must not be cancelled")
+	if Noop.String() != "Noop" || Switch.String() != "Switch" {
+		t.Error("Action.String")
+	}
+}
+
+// At or over the threshold the harness is blocked by Trigger, and the switch
+// happens at the first idle (the threshold leaves room for the turn).
+func TestDecideAtThresholdWaitsForIdle(t *testing.T) {
+	a := acct(map[string]*Usage{"claude": {Windows: map[string]*Window{"5h": wnd(100, t0.Unix()+600)}}})
+	if !Trigger(&a, order3[0], cfgT(), t0, false) {
+		t.Fatal("100% must trigger")
+	}
+	if got := Decide(t0, order3, a, Session{}, "claude", ""); got != Noop {
+		t.Fatalf("busy at 100%%: %v", got)
+	}
+	if got := Decide(t0, order3, a, Session{Idle: true}, "claude", ""); got != Switch {
+		t.Fatalf("idle at 100%%: %v", got)
 	}
 }
 
@@ -259,30 +227,55 @@ func TestStatusText(t *testing.T) {
 		name string
 		a    Account
 		cur  string
-		ph   *Phase
 		want []string
 	}{
-		{"normal", usage(72), "claude", nil, []string{"72% (5h)"}},
-		{"warning band", usage(91), "claude", nil, []string{"bg=yellow", "DROPPING YOU IN 4% OF USAGE"}},
-		{"below band", usage(89), "claude", nil, []string{"89% (5h)"}},
-		{"handoff down", usage(95), "claude", &Phase{To: "codex"}, []string{"bg=red", "SWITCHING claude → codex"}},
-		{"handoff up", Account{}, "codex", &Phase{To: "claude"}, []string{"bg=cyan", "claude"}},
-		{"not first", blocked, "codex", nil, []string{"bg=blue", "codex · back to claude at " + time.Unix(back, 0).Format("Mon 15:04")}},
+		{"normal", usage(72), "claude", []string{"72% (5h)"}},
+		{"warning band", usage(91), "claude", []string{"bg=yellow", "claude 91% (5h): switch at 95%, 4% left"}},
+		{"below band", usage(89), "claude", []string{"89% (5h)"}},
+		{"unknown", Account{}, "claude", []string{"claude · usage unknown"}},
+		{"not first", blocked, "codex", []string{"bg=blue", "codex · back to claude at " + time.Unix(back, 0).Format("Mon 15:04")}},
 	}
 	for _, tc := range cases {
-		got := StatusText(t0, c, order3, tc.a, tc.cur, tc.ph)
+		got := StatusText(t0, c, order3, tc.a, tc.cur, "")
 		for _, w := range tc.want {
 			if !strings.Contains(got, w) {
 				t.Errorf("%s: %q lacks %q", tc.name, got, w)
 			}
 		}
 	}
-	if got := StatusText(t0, c, order3, usage(89), "claude", nil); strings.Contains(got, "bg=yellow") {
+	if got := StatusText(t0, c, order3, usage(89), "claude", ""); strings.Contains(got, "bg=yellow") {
 		t.Errorf("89%% must be below the yellow band: %q", got)
 	}
 	// "back to" names the first harness above cur that is blocked.
 	a := acct(map[string]*Usage{"claude": {BlockedUntil: back}, "codex": {BlockedUntil: back + 60}})
-	if got := StatusText(t0, c, order3, a, "pi", nil); !strings.Contains(got, "back to claude at") {
+	if got := StatusText(t0, c, order3, a, "pi", ""); !strings.Contains(got, "back to claude at") {
 		t.Errorf("pi status: %q", got)
+	}
+}
+
+// A pending switch and a pin show in the status line; a pin hides "back to".
+func TestStatusTextSwitchAndPin(t *testing.T) {
+	c := cfgT()
+	blocked := acct(map[string]*Usage{"claude": {BlockedUntil: t0.Unix() + 7200}})
+	cases := []struct {
+		name, cur, pin, want string
+		a                    Account
+	}{
+		{"switch pending", "claude", "", "claude → codex: switching at the next idle", blocked},
+		{"pin pending", "claude", "pi", "claude → pi: switching at the next idle", Account{}},
+		{"on the pin", "pi", "pi", "pi · usage unknown · pinned to pi", Account{}},
+		{"pinned below a blocked harness", "codex", "codex", "pinned to codex", blocked},
+	}
+	for _, tc := range cases {
+		got := StatusText(t0, c, order3, tc.a, tc.cur, tc.pin)
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("%s: %q lacks %q", tc.name, got, tc.want)
+		}
+		if tc.pin != "" && strings.Contains(got, "back to") {
+			t.Errorf("%s: a pin must hide back-to: %q", tc.name, got)
+		}
+	}
+	if got := StatusText(t0, c, order3, acct(map[string]*Usage{"claude": {Windows: map[string]*Window{"5h": wnd(97, t0.Unix()+60)}}}), "claude", ""); !strings.Contains(got, "2% left") && !strings.Contains(got, "0% left") {
+		t.Errorf("over threshold: %q", got)
 	}
 }

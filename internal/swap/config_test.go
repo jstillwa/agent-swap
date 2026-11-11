@@ -1,6 +1,7 @@
 package swap
 
 import (
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -45,6 +46,7 @@ kind = "pi"
 args = ["--provider", "deepseek"]
 threshold = 80
 cooldown = "30m"
+context_max_bytes = 3000
 [[harness]]
 name = "claude-api"
 kind = "claude"
@@ -66,7 +68,7 @@ key_cmd = "echo k"
 		t.Fatalf("order %q", got)
 	}
 	pi := c.Harnesses[1]
-	if !slices.Equal(pi.Args, []string{"--provider", "deepseek"}) || pi.Threshold != 80 || pi.Cooldown.Minutes() != 30 {
+	if !slices.Equal(pi.Args, []string{"--provider", "deepseek"}) || pi.Threshold != 80 || pi.Cooldown.Minutes() != 30 || pi.ContextMaxBytes != 3000 {
 		t.Fatalf("pi harness %+v", pi)
 	}
 	if err := c.Validate(""); err != nil {
@@ -76,17 +78,53 @@ key_cmd = "echo k"
 
 func TestDefaultsNewKeys(t *testing.T) {
 	c := Defaults()
-	if c.Cooldown.Duration != time.Hour || c.ContextMaxBytes != 60000 {
-		t.Fatalf("cooldown %v context_max_bytes %d", c.Cooldown, c.ContextMaxBytes)
+	if c.Cooldown.Duration != time.Hour || c.ContextMaxBytes != 200000 || c.Threshold != 95 {
+		t.Fatalf("cooldown %v context_max_bytes %d threshold %v", c.Cooldown, c.ContextMaxBytes, c.Threshold)
 	}
-	for _, m := range []string{c.HandoffMessage, c.ReturnMessage} {
-		if !strings.Contains(m, "{notes}") || !strings.Contains(m, "{file}") {
-			t.Errorf("message must ask for notes and the touch file: %q", m)
+	if !strings.Contains(c.ResumeMessage, "{context}") || !strings.Contains(c.ResumeMessage, "{from}") {
+		t.Errorf("resume message must name the context file and the source: %q", c.ResumeMessage)
+	}
+}
+
+// captureStderr runs fn with os.Stderr redirected and returns what it wrote.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() { b, _ := io.ReadAll(r); done <- string(b) }()
+	fn()
+	os.Stderr = orig
+	w.Close()
+	return <-done
+}
+
+// The handoff keys mirrors replaced still load, with a warning naming each.
+func TestLoadConfigWarnsOnRemovedKeys(t *testing.T) {
+	p := t.TempDir() + "/c.toml"
+	body := "threshold = 90\nhandoff_message = \"x\"\nreturn_message = \"y\"\nswitch_back_timeout = \"1h\"\n"
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var c Config
+	var err error
+	out := captureStderr(t, func() { c, err = LoadConfig(p) })
+	if err != nil || c.Threshold != 90 {
+		t.Fatalf("removed keys must not fail the load: %v %+v", err, c)
+	}
+	for _, k := range []string{"handoff_message", "return_message", "switch_back_timeout"} {
+		if !strings.Contains(out, k+" is no longer used") {
+			t.Errorf("no warning for %s:\n%s", k, out)
 		}
 	}
-	if !strings.Contains(c.HandoffMessage, "EMERGENCY SHUTDOWN PROCEDURE (agent-swap)") ||
-		!strings.Contains(c.ReturnMessage, "ACCOUNT CYCLE (agent-swap)") || !strings.Contains(c.ResumeMessage, "{context}") {
-		t.Error("default messages lost their markers")
+	clean := t.TempDir() + "/ok.toml"
+	_ = os.WriteFile(clean, []byte("threshold = 90\n"), 0o600)
+	if out := captureStderr(t, func() { _, _ = LoadConfig(clean) }); out != "" {
+		t.Errorf("warning without removed keys: %q", out)
 	}
 }
 
@@ -164,7 +202,6 @@ func TestConfigValidate(t *testing.T) {
 		{"threshold", func(c *Config) { c.Threshold = -5 }},
 		{"threshold", func(c *Config) { c.Threshold = 100.1 }},
 		{"switch_back_delay", func(c *Config) { c.SwitchBackDelay.Duration = -time.Second }},
-		{"switch_back_timeout", func(c *Config) { c.SwitchBackTimeout.Duration = 0 }},
 		{"poll", func(c *Config) { c.Poll.Duration = 0 }},
 		{"claude_bin", func(c *Config) { c.ClaudeBin = "" }},
 		{"tmux_bin", func(c *Config) { c.TmuxBin = "" }},
@@ -173,8 +210,6 @@ func TestConfigValidate(t *testing.T) {
 		{"cooldown", func(c *Config) { c.Cooldown.Duration = -time.Minute }},
 		{"context_max_bytes", func(c *Config) { c.ContextMaxBytes = 0 }},
 		{"context_max_bytes", func(c *Config) { c.ContextMaxBytes = -1 }},
-		{"handoff_message", func(c *Config) { c.HandoffMessage = "stop now, notes to {notes}" }},
-		{"return_message", func(c *Config) { c.ReturnMessage = "switching back" }},
 	}
 	for _, c := range bad {
 		cfg := valid()
@@ -212,6 +247,7 @@ func TestConfigValidateHarnesses(t *testing.T) {
 		{"target without key_cmd", "key_cmd", func(c *Config) { c.Targets["gw"] = Target{} }},
 		{"negative harness cooldown", "cooldown", func(c *Config) { c.Harnesses[2].Cooldown.Duration = -time.Second }},
 		{"context_max_bytes", "context_max_bytes", func(c *Config) { c.ContextMaxBytes = 0 }},
+		{"negative harness context_max_bytes", "context_max_bytes", func(c *Config) { c.Harnesses[3].ContextMaxBytes = -1 }},
 	}
 	for _, c := range bad {
 		cfg := valid()

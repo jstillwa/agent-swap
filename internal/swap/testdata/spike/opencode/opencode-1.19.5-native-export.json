@@ -1,0 +1,153 @@
+{
+ "info": {
+  "id": "ses_e37f5fe21ffekxIp4nBjKW07ze",
+  "slug": "shiny-comet",
+  "projectID": "global",
+  "directory": "/tmp/agent-swap-spike/spike/proj",
+  "path": "",
+  "title": "Codeword IBIS-77 Memory Check",
+  "agent": "build",
+  "model": {
+   "id": "anthropic/claude-haiku-5-5",
+   "providerID": "gateway",
+   "variant": "default"
+  },
+  "version": "1.19.5",
+  "summary": {
+   "additions": 0,
+   "deletions": 0,
+   "files": 0
+  },
+  "cost": 0,
+  "tokens": {
+   "input": 36414,
+   "output": 4,
+   "reasoning": 50,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "permission": [
+   {
+    "permission": "question",
+    "pattern": "*",
+    "action": "deny"
+   },
+   {
+    "permission": "plan_enter",
+    "pattern": "*",
+    "action": "deny"
+   },
+   {
+    "permission": "plan_exit",
+    "pattern": "*",
+    "action": "deny"
+   }
+  ],
+  "time": {
+   "created": 1794357461470,
+   "updated": 1794357463871
+  }
+ },
+ "messages": [
+  {
+   "info": {
+    "role": "user",
+    "time": {
+     "created": 1794357461506
+    },
+    "agent": "build",
+    "model": {
+     "providerID": "gateway",
+     "modelID": "anthropic/claude-haiku-5-5"
+    },
+    "summary": {
+     "diffs": []
+    },
+    "id": "msg_1c80a0202001UpprXXVg4RwdTz",
+    "sessionID": "ses_e37f5fe21ffekxIp4nBjKW07ze"
+   },
+   "parts": [
+    {
+     "type": "text",
+     "text": "\"Remember the codeword IBIS-77. Reply only OK.\"",
+     "id": "prt_1c80a0206001JfqnPQWQXdu4Se",
+     "sessionID": "ses_e37f5fe21ffekxIp4nBjKW07ze",
+     "messageID": "msg_1c80a0202001UpprXXVg4RwdTz"
+    }
+   ]
+  },
+  {
+   "info": {
+    "parentID": "msg_1c80a0202001UpprXXVg4RwdTz",
+    "role": "assistant",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/tmp/agent-swap-spike/spike/proj",
+     "root": "/tmp/agent-swap-spike/spike/proj"
+    },
+    "cost": 0,
+    "tokens": {
+     "total": 36468,
+     "input": 36414,
+     "output": 4,
+     "reasoning": 50,
+     "cache": {
+      "write": 0,
+      "read": 0
+     }
+    },
+    "modelID": "anthropic/claude-haiku-5-5",
+    "providerID": "gateway",
+    "time": {
+     "created": 1794357461712,
+     "completed": 1794357463869
+    },
+    "finish": "stop",
+    "id": "msg_1c80a02d0001UdNYKTXtw27h5a",
+    "sessionID": "ses_e37f5fe21ffekxIp4nBjKW07ze"
+   },
+   "parts": [
+    {
+     "snapshot": "94e3035aaeac63af25c3fe520de81f3d6c3aaa08",
+     "type": "step-start",
+     "id": "prt_1c80a0976001vQ4c0k2aavpuua",
+     "sessionID": "ses_e37f5fe21ffekxIp4nBjKW07ze",
+     "messageID": "msg_1c80a02d0001UdNYKTXtw27h5a"
+    },
+    {
+     "type": "text",
+     "text": "OK",
+     "time": {
+      "start": 1794357463789,
+      "end": 1794357463792
+     },
+     "id": "prt_1c80a0aed001d4v37HqvS7HUOZ",
+     "sessionID": "ses_e37f5fe21ffekxIp4nBjKW07ze",
+     "messageID": "msg_1c80a02d0001UdNYKTXtw27h5a"
+    },
+    {
+     "reason": "stop",
+     "snapshot": "94e3035aaeac63af25c3fe520de81f3d6c3aaa08",
+     "type": "step-finish",
+     "tokens": {
+      "total": 36468,
+      "input": 36414,
+      "output": 4,
+      "reasoning": 50,
+      "cache": {
+       "write": 0,
+       "read": 0
+      }
+     },
+     "cost": 0,
+     "id": "prt_1c80a0b18001421krzXvn2KR0E",
+     "sessionID": "ses_e37f5fe21ffekxIp4nBjKW07ze",
+     "messageID": "msg_1c80a02d0001UdNYKTXtw27h5a"
+    }
+   ]
+  }
+ ]
+}

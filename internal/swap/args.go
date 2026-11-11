@@ -48,3 +48,35 @@ func ReplayArgs(args []string) []string {
 	}
 	return out
 }
+
+// resumes reports whether pass-through args pick an existing session
+// (claude/codex/pi/opencode resume, continue and session flags).
+func resumes(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		name, _, _ := strings.Cut(a, "=")
+		switch name {
+		case "-r", "--resume", "-c", "--continue", "-s", "--session": // not a "resume" positional: it may be the prompt
+			return true
+		}
+	}
+	return false
+}
+
+// resumeID is the session id given to -r/--resume ("" for none or a picker).
+func resumeID(args []string) string {
+	for i, a := range args {
+		if a == "--" {
+			break
+		}
+		if name, v, ok := strings.Cut(a, "="); ok && (name == "--resume" || name == "-r") {
+			return v
+		}
+		if (a == "-r" || a == "--resume") && i+1 < len(args) && !isDash(args[i+1]) {
+			return args[i+1]
+		}
+	}
+	return ""
+}

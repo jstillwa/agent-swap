@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -72,7 +73,11 @@ func (agyAdapter) Poll(h Harness, rt Runtime, s *Session, u *Usage) error {
 		row, err := agySQL(filepath.Join(dir, "conversation_summaries.db"),
 			"select status, not_fully_idle from conversation_summaries where conversation_id='"+s.NativeID+"'")
 		if status, nfi, ok := strings.Cut(row, "|"); err == nil && ok {
-			s.Idle = status == "CASCADE_RUN_STATUS_IDLE" && (nfi == "0" || nfi == "" || nfi == "false")
+			idle := status == "CASCADE_RUN_STATUS_IDLE" && (nfi == "0" || nfi == "" || nfi == "false")
+			if idle && !s.Idle {
+				s.Turns++ // a turn ended
+			}
+			s.Idle = idle
 		}
 	}
 	s.RateLimited = limited
@@ -118,21 +123,33 @@ func agyScan(path string, since time.Time) (id string, limited bool) {
 	return id, limited
 }
 
-// Transcript is lossy: steps are protobuf, so it keeps printable runs of 8+
-// characters with 2+ spaces (prose), each capped at 500 bytes (long runs are file contents).
-func (agyAdapter) Transcript(native string, rt Runtime) (string, error) {
+// Turns is lossy: steps are protobuf, so it keeps printable runs of 8+ characters
+// with 2+ spaces (prose), each capped at 500 bytes (long runs are file contents).
+// The steps after the cursor (the last step idx read) become one assistant turn.
+func (agyAdapter) Turns(native, cursor string, rt Runtime) ([]Turn, string, error) {
 	if !safeID(native) {
-		return "", fmt.Errorf("bad agy conversation id %q", native)
+		return nil, cursor, fmt.Errorf("bad agy conversation id %q", native)
+	}
+	from, err := strconv.Atoi(cursor)
+	if cursor == "" {
+		from, err = -1, nil
+	}
+	if err != nil {
+		return nil, cursor, fmt.Errorf("bad agy cursor %q", cursor)
 	}
 	out, err := agySQL(filepath.Join(agyDir(rt), "conversations", native+".db"),
-		"select hex(step_payload) from steps order by idx")
+		"select idx, hex(step_payload) from steps where idx > "+strconv.Itoa(from)+" order by idx")
 	if err != nil {
-		return "", fmt.Errorf("agy conversation %s: %v", native, err)
+		return nil, cursor, fmt.Errorf("agy conversation %s: %v", native, err)
 	}
 	var b strings.Builder
-	b.WriteString("[agy transcript, lossy]")
-	for _, h := range strings.Split(out, "\n") {
-		raw, _ := hex.DecodeString(strings.TrimSpace(h))
+	for _, row := range strings.Split(out, "\n") {
+		idx, h, ok := strings.Cut(strings.TrimSpace(row), "|")
+		if !ok {
+			continue
+		}
+		cursor = idx
+		raw, _ := hex.DecodeString(h)
 		for _, run := range strings.FieldsFunc(strings.ToValidUTF8(string(raw), "\x00"), func(r rune) bool {
 			return !unicode.IsPrint(r) && r != '\n' && r != '\t'
 		}) {
@@ -141,5 +158,11 @@ func (agyAdapter) Transcript(native string, rt Runtime) (string, error) {
 			}
 		}
 	}
-	return b.String(), nil
+	if b.Len() == 0 {
+		return nil, cursor, nil
+	}
+	return []Turn{textTurn("agy", "assistant", "[lossy agy transcript]"+b.String())}, cursor, nil
 }
+
+// Write: agy's store is protobuf in sqlite; it receives the context file instead.
+func (agyAdapter) Write(Harness, *Mirror, []Turn, Runtime) (int, error) { return 0, errNoMirror }

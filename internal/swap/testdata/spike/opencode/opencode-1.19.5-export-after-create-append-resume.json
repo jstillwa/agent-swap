@@ -1,0 +1,362 @@
+{
+ "info": {
+  "id": "ses_e37f5841ffffMCI84wb9J71tPx",
+  "slug": "agent-swap-mirror",
+  "projectID": "global",
+  "directory": "/tmp/agent-swap-spike/spike/proj",
+  "path": "",
+  "title": "agent-swap mirror",
+  "agent": "build",
+  "model": {
+   "id": "anthropic/claude-haiku-5-5",
+   "providerID": "gateway",
+   "variant": "default"
+  },
+  "version": "1.19.5",
+  "summary": {
+   "additions": 0,
+   "deletions": 0,
+   "files": 0
+  },
+  "cost": 0,
+  "tokens": {
+   "input": 73977,
+   "output": 27,
+   "reasoning": 0,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "time": {
+   "created": 1794357492705,
+   "updated": 1794357525174
+  }
+ },
+ "messages": [
+  {
+   "info": {
+    "role": "user",
+    "time": {
+     "created": 1794357492705
+    },
+    "agent": "build",
+    "model": {
+     "providerID": "agent-swap",
+     "modelID": "import"
+    },
+    "id": "msg_1c80a7be1000nh4NTEuozwKmcX",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "type": "text",
+     "text": "Remember the codeword TAPIR-65. Reply only OK.",
+     "id": "prt_1c80a7be1001qGLJ5lN4Rp23Rn",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80a7be1000nh4NTEuozwKmcX"
+    }
+   ]
+  },
+  {
+   "info": {
+    "role": "assistant",
+    "time": {
+     "created": 1794357492705,
+     "completed": 1794357492705
+    },
+    "parentID": "msg_1c80a7be1000nh4NTEuozwKmcX",
+    "modelID": "import",
+    "providerID": "agent-swap",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/tmp/agent-swap-spike/spike/proj",
+     "root": "/tmp/agent-swap-spike/spike/proj"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "stop",
+    "id": "msg_1c80a7be1002u6UGmKZDkFa04H",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "type": "text",
+     "text": "OK",
+     "id": "prt_1c80a7be1003zs0Z99KXMPo0Ds",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80a7be1002u6UGmKZDkFa04H"
+    }
+   ]
+  },
+  {
+   "info": {
+    "role": "user",
+    "time": {
+     "created": 1794357506061
+    },
+    "agent": "build",
+    "model": {
+     "providerID": "gateway",
+     "modelID": "anthropic/claude-haiku-5-5"
+    },
+    "summary": {
+     "diffs": []
+    },
+    "id": "msg_1c80ab00d001bqTkCOKYWQRjAb",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "type": "text",
+     "text": "\"What is the codeword? Reply only the codeword.\"",
+     "id": "prt_1c80ab012001WoOyZoAZWVfgA2",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80ab00d001bqTkCOKYWQRjAb"
+    }
+   ]
+  },
+  {
+   "info": {
+    "parentID": "msg_1c80ab00d001bqTkCOKYWQRjAb",
+    "role": "assistant",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/tmp/agent-swap-spike/spike/proj",
+     "root": "/tmp/agent-swap-spike/spike/proj"
+    },
+    "cost": 0,
+    "tokens": {
+     "total": 36974,
+     "input": 36965,
+     "output": 9,
+     "reasoning": 0,
+     "cache": {
+      "write": 0,
+      "read": 0
+     }
+    },
+    "modelID": "anthropic/claude-haiku-5-5",
+    "providerID": "gateway",
+    "time": {
+     "created": 1794357506277,
+     "completed": 1794357508148
+    },
+    "finish": "stop",
+    "id": "msg_1c80ab0e5001Q7R7neryuCpV5j",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "snapshot": "94e3035aaeac63af25c3fe520de81f3d6c3aaa08",
+     "type": "step-start",
+     "id": "prt_1c80ab71e001IIHuGSwrfIahIN",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80ab0e5001Q7R7neryuCpV5j"
+    },
+    {
+     "type": "text",
+     "text": "TAPIR-65",
+     "time": {
+      "start": 1794357507874,
+      "end": 1794357508053
+     },
+     "id": "prt_1c80ab722001rNdRXP7nFBWTy5",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80ab0e5001Q7R7neryuCpV5j"
+    },
+    {
+     "reason": "stop",
+     "snapshot": "94e3035aaeac63af25c3fe520de81f3d6c3aaa08",
+     "type": "step-finish",
+     "tokens": {
+      "total": 36974,
+      "input": 36965,
+      "output": 9,
+      "reasoning": 0,
+      "cache": {
+       "write": 0,
+       "read": 0
+      }
+     },
+     "cost": 0,
+     "id": "prt_1c80ab811001fkl8z0BEGZ09d5",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80ab0e5001Q7R7neryuCpV5j"
+    }
+   ]
+  },
+  {
+   "info": {
+    "role": "user",
+    "time": {
+     "created": 1794357517440
+    },
+    "agent": "build",
+    "model": {
+     "providerID": "agent-swap",
+     "modelID": "import"
+    },
+    "id": "msg_1c80adc80000lfHQfwI316LCIZ",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "type": "text",
+     "text": "Also remember the second codeword QUOKKA-12. Reply only OK.",
+     "id": "prt_1c80adc800013LHLlX03evBzP2",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80adc80000lfHQfwI316LCIZ"
+    }
+   ]
+  },
+  {
+   "info": {
+    "role": "assistant",
+    "time": {
+     "created": 1794357517440,
+     "completed": 1794357517440
+    },
+    "parentID": "msg_1c80adc80000lfHQfwI316LCIZ",
+    "modelID": "import",
+    "providerID": "agent-swap",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/tmp/agent-swap-spike/spike/proj",
+     "root": "/tmp/agent-swap-spike/spike/proj"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "stop",
+    "id": "msg_1c80adc80002wl5mFm0YCHdXdZ",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "type": "text",
+     "text": "OK",
+     "id": "prt_1c80adc80003T2ZB0hmzCpAQze",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80adc80002wl5mFm0YCHdXdZ"
+    }
+   ]
+  },
+  {
+   "info": {
+    "role": "user",
+    "time": {
+     "created": 1794357523089
+    },
+    "agent": "build",
+    "model": {
+     "providerID": "gateway",
+     "modelID": "anthropic/claude-haiku-5-5"
+    },
+    "summary": {
+     "diffs": []
+    },
+    "id": "msg_1c80af291001vbcddL3r0ijAo0",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "type": "text",
+     "text": "\"List all codewords you were told, comma separated, nothing else.\"",
+     "id": "prt_1c80af292001qbk7QZAaJ2N4M1",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80af291001vbcddL3r0ijAo0"
+    }
+   ]
+  },
+  {
+   "info": {
+    "parentID": "msg_1c80af291001vbcddL3r0ijAo0",
+    "role": "assistant",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/tmp/agent-swap-spike/spike/proj",
+     "root": "/tmp/agent-swap-spike/spike/proj"
+    },
+    "cost": 0,
+    "tokens": {
+     "total": 37030,
+     "input": 37012,
+     "output": 18,
+     "reasoning": 0,
+     "cache": {
+      "write": 0,
+      "read": 0
+     }
+    },
+    "modelID": "anthropic/claude-haiku-5-5",
+    "providerID": "gateway",
+    "time": {
+     "created": 1794357523281,
+     "completed": 1794357525171
+    },
+    "finish": "stop",
+    "id": "msg_1c80af351001TtEPL4991UoxeD",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx"
+   },
+   "parts": [
+    {
+     "snapshot": "94e3035aaeac63af25c3fe520de81f3d6c3aaa08",
+     "type": "step-start",
+     "id": "prt_1c80af96b001OXpzaZBuZ59gMS",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80af351001TtEPL4991UoxeD"
+    },
+    {
+     "type": "text",
+     "text": "TAPIR-65, QUOKKA-12",
+     "time": {
+      "start": 1794357524847,
+      "end": 1794357525074
+     },
+     "id": "prt_1c80af96f001yByHvrWEz68AQg",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80af351001TtEPL4991UoxeD"
+    },
+    {
+     "reason": "stop",
+     "snapshot": "94e3035aaeac63af25c3fe520de81f3d6c3aaa08",
+     "type": "step-finish",
+     "tokens": {
+      "total": 37030,
+      "input": 37012,
+      "output": 18,
+      "reasoning": 0,
+      "cache": {
+       "write": 0,
+       "read": 0
+      }
+     },
+     "cost": 0,
+     "id": "prt_1c80afa8f001LmpfSG0EObZI47",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80af351001TtEPL4991UoxeD"
+    }
+   ]
+  }
+ ]
+}

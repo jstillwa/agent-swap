@@ -24,6 +24,8 @@ const (
 
 func AccountPath(stateDir string) string { return filepath.Join(stateDir, "account.json") }
 func SessionPath(dir string) string      { return filepath.Join(dir, "session.json") }
+func RequestPath(dir string) string      { return filepath.Join(dir, "request.json") }
+func MirrorsPath(dir string) string      { return filepath.Join(dir, "mirrors.json") }
 
 // MergeWindows stores fresh window readings in u. Usage in a window never
 // drops, so a live stored window yields only to a later window or a higher
@@ -116,12 +118,14 @@ func Hook(event string, in io.Reader, now time.Time) error {
 		case "SessionStart": // Idle stays as the runner seeded it (busy when launched with a prompt)
 			s.RateLimited, s.StartedAt = false, now.Unix()
 		case "UserPromptSubmit":
-			s.Idle, s.RateLimited = false, false
+			s.Idle, s.RateLimited, s.Failed = false, false, false
 		case "Stop":
-			s.Idle, s.RateLimited = true, false
+			s.Idle, s.RateLimited, s.Failed = true, false, false
+			s.Turns++
 		case "StopFailure": // Stop does not fire on API errors
-			s.Idle = true
+			s.Idle, s.Failed = true, true
 			s.RateLimited = IsLimitError(p.Error)
+			s.Turns++
 		case "LimitHit": // a retrying limit error (opencode): the turn is still running
 			s.RateLimited = true
 		}

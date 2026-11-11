@@ -243,3 +243,51 @@ func TestSessionNameUnique(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// Stop and StopFailure each count a completed turn; StopFailure marks it
+// failed until the next prompt or Stop.
+func TestHookTurnCounter(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(EnvSessionDir, dir)
+	step := func(ev, body string) Session {
+		t.Helper()
+		if err := Hook(ev, strings.NewReader(body), t0); err != nil {
+			t.Fatal(err)
+		}
+		s, _ := Load[Session](SessionPath(dir))
+		return s
+	}
+	want := []struct {
+		ev, body     string
+		turns        int
+		failed, idle bool
+	}{
+		{"SessionStart", `{"session_id":"s"}`, 0, false, false},
+		{"UserPromptSubmit", `{}`, 0, false, false},
+		{"Stop", `{}`, 1, false, true},
+		{"UserPromptSubmit", `{}`, 1, false, false},
+		{"StopFailure", `{"error":"server_error"}`, 2, true, true},
+		{"LimitHit", `{}`, 2, true, true},
+		{"SessionStart", `{}`, 2, true, true},
+		{"UserPromptSubmit", `{}`, 2, false, false},
+		{"StopFailure", `{"error":"rate_limit"}`, 3, true, true},
+		{"Stop", `{}`, 4, false, true},
+	}
+	for i, w := range want {
+		s := step(w.ev, w.body)
+		if s.Turns != w.turns || s.Failed != w.failed || s.Idle != w.idle {
+			t.Fatalf("step %d %s: turns=%d failed=%v idle=%v, want %d %v %v", i, w.ev, s.Turns, s.Failed, s.Idle, w.turns, w.failed, w.idle)
+		}
+	}
+}
+
+func TestStatePaths(t *testing.T) {
+	for got, want := range map[string]string{
+		AccountPath("/s"): "/s/account.json", SessionPath("/d"): "/d/session.json",
+		RequestPath("/d"): "/d/request.json", MirrorsPath("/d"): "/d/mirrors.json",
+	} {
+		if got != want {
+			t.Errorf("%s != %s", got, want)
+		}
+	}
+}

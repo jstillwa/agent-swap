@@ -64,3 +64,21 @@ func TestReplayArgs(t *testing.T) {
 		}
 	}
 }
+
+// resumes spots pass-through args that pick an existing session.
+func TestResumes(t *testing.T) {
+	yes := [][]string{{"-r"}, {"--resume", "abc"}, {"--resume=abc"}, {"-c"}, {"--continue"},
+		{"--model", "x", "-s", "ses_1"}, {"--session", "/p.jsonl"}, {"--session=/p.jsonl"}}
+	no := [][]string{nil, {"--model", "x"}, {"resume"}, {"fix", "the", "resume", "bug"}, {"--", "--resume"},
+		{"--session-id", "1111"}, {"--fork-session"}, {"-rc"}}
+	for _, a := range yes {
+		if !resumes(a) {
+			t.Errorf("resumes(%q) = false", a)
+		}
+	}
+	for _, a := range no {
+		if resumes(a) {
+			t.Errorf("resumes(%q) = true", a)
+		}
+	}
+}

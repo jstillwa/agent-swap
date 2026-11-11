@@ -44,8 +44,25 @@ type Session struct {
 	NativeID    string `json:"native_id"` // the harness's own session/conversation id
 	Idle        bool   `json:"idle"`
 	RateLimited bool   `json:"rate_limited"`
-	StartedAt   int64  `json:"started_at"` // last SessionStart hook
+	Failed      bool   `json:"failed,omitempty"` // the last turn ended in an error (StopFailure)
+	Turns       int    `json:"turns"`            // completed turns (Stop/StopFailure) since launch
+	StartedAt   int64  `json:"started_at"`       // last SessionStart hook
 	UpdatedAt   int64  `json:"updated_at"`
+}
+
+// Request is what `agent-swap use` and `agent-swap sync` ask of a running
+// session (request.json in its dir). The runner validates it on every read.
+type Request struct {
+	Pin  string   `json:"pin,omitempty"`  // harness name to run regardless of usage ("" = auto)
+	Sync []string `json:"sync,omitempty"` // harness names whose sessions to bring up to date ("*" = all)
+}
+
+// MirrorStatus is one line of mirrors.json, written by the runner for
+// `status` only; it is never read back.
+type MirrorStatus struct {
+	Native string `json:"native"`
+	Path   string `json:"path,omitempty"`
+	Behind int    `json:"behind"` // log turns from other harnesses not yet written into it
 }
 
 // Load reads JSON at path into a T; a missing file yields the zero value.
@@ -68,7 +85,7 @@ func Update[T any](path string, fn func(*T)) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return err
 	}
@@ -85,9 +102,17 @@ func Update[T any](path string, fn func(*T)) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*") // O_EXCL, 0600
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	defer os.Remove(tmp.Name()) // no-op after the rename
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }

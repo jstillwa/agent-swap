@@ -1,0 +1,79 @@
+{
+ "info": {
+  "id": "ses_e37f5841ffffMCI84wb9J71tPx",
+  "directory": "/tmp/agent-swap-spike/spike/proj",
+  "title": "agent-swap mirror",
+  "version": "1.19.5",
+  "time": {
+   "created": 1794357517440,
+   "updated": 1794357517440
+  },
+  "slug": "agent-swap-mirror"
+ },
+ "messages": [
+  {
+   "info": {
+    "id": "msg_1c80adc80000lfHQfwI316LCIZ",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+    "role": "user",
+    "time": {
+     "created": 1794357517440
+    },
+    "agent": "build",
+    "model": {
+     "providerID": "agent-swap",
+     "modelID": "import"
+    }
+   },
+   "parts": [
+    {
+     "id": "prt_1c80adc800013LHLlX03evBzP2",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80adc80000lfHQfwI316LCIZ",
+     "type": "text",
+     "text": "Also remember the second codeword QUOKKA-12. Reply only OK."
+    }
+   ]
+  },
+  {
+   "info": {
+    "id": "msg_1c80adc80002wl5mFm0YCHdXdZ",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+    "role": "assistant",
+    "parentID": "msg_1c80adc80000lfHQfwI316LCIZ",
+    "time": {
+     "created": 1794357517440,
+     "completed": 1794357517440
+    },
+    "modelID": "import",
+    "providerID": "agent-swap",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/tmp/agent-swap-spike/spike/proj",
+     "root": "/tmp/agent-swap-spike/spike/proj"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "stop"
+   },
+   "parts": [
+    {
+     "id": "prt_1c80adc80003T2ZB0hmzCpAQze",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80adc80002wl5mFm0YCHdXdZ",
+     "type": "text",
+     "text": "OK"
+    }
+   ]
+  }
+ ]
+}

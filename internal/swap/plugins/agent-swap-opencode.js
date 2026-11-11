@@ -31,6 +31,8 @@ export const AgentSwap = async () => ({
       const p = event.properties || {};
       const info = p.info;
       if ((event.type === "session.created" || event.type === "session.updated") && info?.parentID) children.add(info.id);
+      // A new top-level session (/new) becomes the main one; agent-swap validates the switch.
+      if (event.type === "session.created" && info?.id && !info.parentID) main = info.id;
       const id = p.sessionID;
       if (!id || children.has(id)) return;
       main ??= id;

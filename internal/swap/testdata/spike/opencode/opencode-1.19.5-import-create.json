@@ -1,0 +1,79 @@
+{
+ "info": {
+  "id": "ses_e37f5841ffffMCI84wb9J71tPx",
+  "directory": "/tmp/agent-swap-spike/spike/proj",
+  "title": "agent-swap mirror",
+  "version": "1.19.5",
+  "time": {
+   "created": 1794357492705,
+   "updated": 1794357492705
+  },
+  "slug": "agent-swap-mirror"
+ },
+ "messages": [
+  {
+   "info": {
+    "id": "msg_1c80a7be1000nh4NTEuozwKmcX",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+    "role": "user",
+    "time": {
+     "created": 1794357492705
+    },
+    "agent": "build",
+    "model": {
+     "providerID": "agent-swap",
+     "modelID": "import"
+    }
+   },
+   "parts": [
+    {
+     "id": "prt_1c80a7be1001qGLJ5lN4Rp23Rn",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80a7be1000nh4NTEuozwKmcX",
+     "type": "text",
+     "text": "Remember the codeword TAPIR-65. Reply only OK."
+    }
+   ]
+  },
+  {
+   "info": {
+    "id": "msg_1c80a7be1002u6UGmKZDkFa04H",
+    "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+    "role": "assistant",
+    "parentID": "msg_1c80a7be1000nh4NTEuozwKmcX",
+    "time": {
+     "created": 1794357492705,
+     "completed": 1794357492705
+    },
+    "modelID": "import",
+    "providerID": "agent-swap",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/tmp/agent-swap-spike/spike/proj",
+     "root": "/tmp/agent-swap-spike/spike/proj"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "stop"
+   },
+   "parts": [
+    {
+     "id": "prt_1c80a7be1003zs0Z99KXMPo0Ds",
+     "sessionID": "ses_e37f5841ffffMCI84wb9J71tPx",
+     "messageID": "msg_1c80a7be1002u6UGmKZDkFa04H",
+     "type": "text",
+     "text": "OK"
+    }
+   ]
+  }
+ ]
+}

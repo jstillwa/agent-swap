@@ -43,22 +43,22 @@ type Harness struct {
 	Target    string   `toml:"target"`    // claude only: API billing via Targets
 	Threshold float64  `toml:"threshold"` // 0 → Config.Threshold
 	Cooldown  Duration `toml:"cooldown"`  // 0 → Config.Cooldown
+	// ContextMaxBytes caps the conversation text written into this harness's
+	// session (0 → Config.ContextMaxBytes); small-window models need less.
+	ContextMaxBytes int `toml:"context_max_bytes"`
 }
 
 type Config struct {
-	Threshold         float64           `toml:"threshold"`
-	SwitchBackDelay   Duration          `toml:"switch_back_delay"`
-	SwitchBackTimeout Duration          `toml:"switch_back_timeout"`
-	Cooldown          Duration          `toml:"cooldown"`          // block after a limit error with no known reset
-	ContextMaxBytes   int               `toml:"context_max_bytes"` // transcript text handed to the next harness
-	Poll              Duration          `toml:"poll"`
-	DefaultTarget     string            `toml:"default_target"`
-	Targets           map[string]Target `toml:"targets"`
-	Harnesses         []Harness         `toml:"harness"`
+	Threshold       float64           `toml:"threshold"`
+	SwitchBackDelay Duration          `toml:"switch_back_delay"`
+	Cooldown        Duration          `toml:"cooldown"`          // block after a limit error with no known reset
+	ContextMaxBytes int               `toml:"context_max_bytes"` // conversation text written into a harness's session
+	Poll            Duration          `toml:"poll"`
+	DefaultTarget   string            `toml:"default_target"`
+	Targets         map[string]Target `toml:"targets"`
+	Harnesses       []Harness         `toml:"harness"`
 
-	HandoffMessage string `toml:"handoff_message"`
-	ReturnMessage  string `toml:"return_message"`
-	ResumeMessage  string `toml:"resume_message"`
+	ResumeMessage string `toml:"resume_message"` // prompt when a harness gets the context file instead of a session
 
 	StatuslineCmd string `toml:"statusline_cmd"` // default: statusLine.command from ~/.claude/settings.json
 	ClaudeBin     string `toml:"claude_bin"`
@@ -67,35 +67,26 @@ type Config struct {
 	Notify        bool   `toml:"notify"`
 }
 
-const (
-	defNotes = "Write handoff notes for the next agent to {notes}: the task, current state, next steps, " +
-		"files touched, and any running background tasks. When done, run: touch {file}"
-	defHandoff = "⚠ EMERGENCY SHUTDOWN PROCEDURE (agent-swap). Leaving {from} ({reason}); this conversation moves to {to}. " +
-		"Pause all work immediately at the nearest safe point: finish or revert any half-applied edit and " +
-		"do not start new tool calls. " + defNotes
-	defReturn = "⚠ ACCOUNT CYCLE (agent-swap). {to} is available again; this conversation moves back to it. " +
-		"Pause at the nearest safe point: finish or revert any half-applied edit and do not start new tool calls. " + defNotes
-	defResume = "agent-swap moved this conversation from {from} to {to}. Read {context} — it has the handoff " +
-		"notes and the conversation so far — then continue the task."
-)
+// removedKeys were used by the agent-written handoff, which mirrors replaced.
+var removedKeys = []string{"handoff_message", "return_message", "switch_back_timeout"}
+
+const defResume = "agent-swap moved this conversation from {from} to {to}. Read {context}: it has the " +
+	"conversation so far. Then continue where it left off; if it ended waiting for the user, ask again."
 
 func Defaults() Config {
 	home, _ := os.UserHomeDir()
 	return Config{
-		Threshold:         95,
-		SwitchBackDelay:   Duration{10 * time.Minute},
-		SwitchBackTimeout: Duration{time.Hour},
-		Cooldown:          Duration{time.Hour},
-		ContextMaxBytes:   60000,
-		Poll:              Duration{30 * time.Second},
-		Targets:           map[string]Target{}, // no built-in target: the user defines one
-		HandoffMessage:    defHandoff,
-		ResumeMessage:     defResume,
-		ReturnMessage:     defReturn,
-		ClaudeBin:         "claude",
-		TmuxBin:           "tmux",
-		StateDir:          filepath.Join(home, ".local", "state", "agent-swap"),
-		Notify:            true,
+		Threshold:       95,
+		SwitchBackDelay: Duration{10 * time.Minute},
+		Cooldown:        Duration{time.Hour},
+		ContextMaxBytes: 200000,
+		Poll:            Duration{30 * time.Second},
+		Targets:         map[string]Target{}, // no built-in target: the user defines one
+		ResumeMessage:   defResume,
+		ClaudeBin:       "claude",
+		TmuxBin:         "tmux",
+		StateDir:        filepath.Join(home, ".local", "state", "agent-swap"),
+		Notify:          true,
 	}
 }
 
@@ -108,8 +99,14 @@ func DefaultConfigPath() string {
 // LoadConfig reads path over the defaults. A missing file yields the defaults.
 func LoadConfig(path string) (Config, error) {
 	cfg := Defaults()
-	if _, err := toml.DecodeFile(path, &cfg); err != nil && !errors.Is(err, os.ErrNotExist) {
+	md, err := toml.DecodeFile(path, &cfg)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return cfg, fmt.Errorf("config %s: %w", path, err)
+	}
+	for _, k := range removedKeys {
+		if md.IsDefined(k) {
+			fmt.Fprintf(os.Stderr, "agent-swap: warning: %s: %s is no longer used (conversations are mirrored); remove it\n", path, k)
+		}
 	}
 	return cfg, nil
 }
@@ -159,8 +156,6 @@ func (c Config) Validate(target string) error {
 		return fmt.Errorf("threshold must be > 0 and <= 100, got %v", c.Threshold)
 	case c.SwitchBackDelay.Duration < 0:
 		return errors.New("switch_back_delay must not be negative")
-	case c.SwitchBackTimeout.Duration <= 0:
-		return errors.New("switch_back_timeout must be positive")
 	case c.Cooldown.Duration < 0:
 		return errors.New("cooldown must not be negative")
 	case c.ContextMaxBytes <= 0:
@@ -173,10 +168,6 @@ func (c Config) Validate(target string) error {
 		return errors.New("tmux_bin must not be empty")
 	case c.StateDir == "":
 		return errors.New("state_dir must not be empty")
-	case !strings.Contains(c.HandoffMessage, "{file}"):
-		return errors.New("handoff_message must contain {file}")
-	case !strings.Contains(c.ReturnMessage, "{file}"):
-		return errors.New("return_message must contain {file}")
 	}
 	seen := map[string]bool{}
 	for i, h := range c.Order(target) {
@@ -190,6 +181,8 @@ func (c Config) Validate(target string) error {
 			return fmt.Errorf("harness %s: kind must be one of claude, codex, pi, opencode, agy; got %q", h.Name, h.Kind)
 		case h.Cooldown.Duration < 0:
 			return fmt.Errorf("harness %s: cooldown must not be negative", h.Name)
+		case h.ContextMaxBytes < 0:
+			return fmt.Errorf("harness %s: context_max_bytes must not be negative", h.Name)
 		case h.Target == "":
 		case h.Kind != "claude":
 			return fmt.Errorf("harness %s: target is only valid for kind claude", h.Name)
