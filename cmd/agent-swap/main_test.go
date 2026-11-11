@@ -184,6 +184,23 @@ func TestFlagsBeforeSubcommandRejected(t *testing.T) {
 	}
 }
 
+// --version prints the ldflags version when set, else a build-info version.
+func TestVersion(t *testing.T) {
+	isolate(t)
+	for _, arg := range []string{"--version", "-v", "version"} {
+		out, code, err := captureRun(t, arg)
+		if code != 0 || err != nil || !strings.HasPrefix(out, "agent-swap ") {
+			t.Fatalf("%s: got %q %d %v", arg, out, code, err)
+		}
+	}
+	old := version
+	version = "v9.9.9"
+	t.Cleanup(func() { version = old })
+	if out, _, _ := captureRun(t, "--version"); out != "agent-swap v9.9.9\n" {
+		t.Fatalf("ldflags version: got %q", out)
+	}
+}
+
 // use and sync write request.json in the run dir; flags may follow the name.
 func TestUseAndSyncWriteRequest(t *testing.T) {
 	isolate(t)

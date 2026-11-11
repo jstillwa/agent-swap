@@ -4,6 +4,13 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Planned
+
+- Linux desktop notifications (`notify-send`).
+- CI workflow.
+
+## [0.2.0] - 2026-11-10
+
 ### Added
 
 - **Harnesses.** A config can list `[[harness]]` tables in preference order. Supported kinds: `claude`, `codex`, `pi`, `opencode` and `agy`. agent-swap runs the first harness that is not blocked.
@@ -12,12 +19,12 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 - **`agent-swap use <harness|auto>`.** Pins the running conversation to a harness until that harness hits a limit. Inside a harness it needs `--force`.
 - **`agent-swap sync [harness]`.** Writes the conversation into the session of a harness, so that you can open it outside agent-swap.
 - **`context_max_bytes` per harness.** A `[[harness]]` can set its own cap.
-- **`status`** lists the pin and each mirror with its native ID and the turns it is behind.
 - **Signals per kind.** `pi` gets an extension and `opencode` gets a plugin. Both call `agent-swap hook`. agent-swap polls the session files of `codex` and `agy`.
 - **`LimitHit` hook event.** A harness reports a limit while it retries.
 - **CLI checks.** `agent-swap --config X status` stops with exit code 2 and asks for the subcommand first. `--target` with `[[harness]]` tables prints a warning.
 - **Config keys.** `cooldown` (default 1 h) blocks a harness after a limit error with no known reset. `context_max_bytes` (default 200000) limits the text in one mirror or context file.
-- **`status`** shows usage and `blocked_until` per harness, and the desired harness.
+- **`status`** shows usage and `blocked_until` per harness, the desired harness and the wanted harness. For a running session it shows the pin and each mirror with its native ID and the turns it is behind.
+- **`agent-swap --version`** prints the version.
 
 ### Removed
 
@@ -36,20 +43,14 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 - **Statusline merge.** A statusline update with one window keeps the other stored window until its reset. An older or lower value does not replace newer data.
 - **Rate-limited flag.** `UserPromptSubmit` clears it. Thus an old rate limit cannot start a new API period.
 - **Config path.** Every command accepts `--config PATH` and reads `$AGENT_SWAP_CONFIG`. The flag has priority.
-- **Ready-file path.** The `{file}` placeholder is shell-quoted when the path has special characters.
 - **README.** The FAQ says that a forced return to the subscription holds only while usage is below the threshold.
 
 ### Changed
 
 - **State format.** `account.json` holds one entry per harness. A file from 0.1 decodes to empty state.
-- **Messages.** `resume_message` names the context file. New placeholders: `{from}`, `{to}`, `{notes}` and `{context}`. `return_resume_message` is removed.
+- **Messages.** `resume_message` names the context file. New placeholders: `{from}`, `{to}` and `{context}`. `return_resume_message` is removed.
 - **Settings files.** The claude settings file is `<name>.settings.json` (was `sub` and `api`).
 - **Project name.** The project is now agent-swap (was claude-swap). The binary, module path, config and state directories, and the `AGENT_SWAP_*` environment variables use the new name. The tmux session prefix `cs-` becomes `as-`.
-
-### Planned
-
-- Linux desktop notifications (`notify-send`).
-- CI workflow.
 
 ## [0.1.0] - 2026-11-10
 
@@ -68,5 +69,6 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 - **Notifications.** macOS notifications on each switch.
 - **Configuration.** A TOML config with target profiles and message templates, plus CLI flag overrides.
 
-[Unreleased]: https://github.com/jstillwa/agent-swap/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jstillwa/agent-swap/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jstillwa/agent-swap/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jstillwa/agent-swap/releases/tag/v0.1.0

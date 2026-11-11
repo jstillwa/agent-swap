@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"syscall"
@@ -32,6 +33,7 @@ const usage = `usage:
   agent-swap sync [harness] [--session DIR]
                                         write the conversation into harness's session
                                         (default: all), to open it outside agent-swap
+  agent-swap --version                  print the version
 
 The running session is found from the tmux window's agent-swap pane, or
 --session (a dir under state_dir/sessions). --config defaults to
@@ -52,6 +54,21 @@ internal (used by tmux and the harness hooks/plugins):
   agent-swap run [flags] [-- args]
   agent-swap statusline | hook <Event> | key <target>
 `
+
+// version is set at release build time with -ldflags "-X main.version=vX.Y.Z".
+var version = ""
+
+// buildVersion returns the release version, else the module version that
+// `go install …@vX.Y.Z` or a build in a git checkout records, else "devel".
+func buildVersion() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "devel"
+}
 
 func main() {
 	code, err := run(os.Args[1:])
@@ -109,6 +126,9 @@ func run(args []string) (int, error) {
 		return r.Run(ctx)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
+		return 0, nil
+	case "-v", "--version", "version":
+		fmt.Println("agent-swap", buildVersion())
 		return 0, nil
 	}
 	cfg, _, _, _, err := parse(args) // validate before handing off to tmux

@@ -258,6 +258,7 @@ agent-swap [flags] [-- claude args]   # launch in tmux (the normal entry point)
 agent-swap status [--config PATH] [--session DIR]   # usage, desired and wanted harness, pin, mirrors
 agent-swap use <harness|auto> [--session DIR] [--force]
 agent-swap sync [harness] [--session DIR]
+agent-swap --version
 agent-swap --help
 ```
 
