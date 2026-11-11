@@ -1,2 +1,5 @@
 /agent-swap
 .project/
+.claude/
+.codex/
+.DS_Store
