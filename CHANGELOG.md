@@ -4,6 +4,10 @@ This file records all notable changes. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+
+- **README.** Claude Code is optional. The Requirements list every supported agent, and Quick start has a setup without Claude Code. The status bar sample, the limit-error words, the argument rules and the validation rules now match the code.
+
 ### Planned
 
 - Linux desktop notifications (`notify-send`).
