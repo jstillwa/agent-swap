@@ -52,7 +52,7 @@ Use agent-swap when the overflow must go to **a different bill**. Examples are a
 | Claude Code | 2.1.322 | Needs `rate_limits` in the statusline input (Pro / Max / Ultra plans) and the `StopFailure` hook |
 | tmux | 3.8 | |
 | Go | 1.27 | To build |
-| macOS | 14 | Notifications use `osascript`. Other Unix systems should work without notifications, but this is not tested. |
+| macOS | 14 | Notifications use `osascript`. Other Unix systems are not tested, and they get no notifications. |
 
 You also need an Anthropic Messages API endpoint and a command that prints its key. See [Configuration](#configuration).
 
@@ -169,7 +169,7 @@ agent-swap has no built-in target. Define at least one target. If you define mor
 
 A harness is one coding-agent CLI that agent-swap can run in the pane. List harnesses with `[[harness]]` tables. The order is the preference order. agent-swap runs the first harness that is not blocked. When that harness nears or hits its limit, agent-swap moves the conversation to the next harness. When a harness higher in the list is free again, agent-swap moves the conversation back.
 
-Without `[[harness]]` tables, the order is `claude`, then `api` (claude on the target from `default_target` or `--target`). This is the subscription/API behavior that the earlier sections describe.
+Without `[[harness]]` tables, the order is `claude`, then `api` (claude on the target from `default_target` or `--target`). The earlier sections describe this subscription and API behavior.
 
 ```toml
 [[harness]]
@@ -202,13 +202,13 @@ Arguments after `--` go to the first launch. A later launch gets them only if it
 
 ### Limits
 
-- **`claude` and `codex`** report usage percentages. agent-swap switches at the `threshold`, before the limit. It switches back at the window reset plus `switch_back_delay`. Codex on paid credits is not limited: only `rate_limit_reached_type` or a limit error counts.
+- **`claude` and `codex`** report usage percentages. agent-swap switches at the `threshold`, before the limit. It switches back at the window reset plus `switch_back_delay`. When codex uses paid credits, its percentages do not block it. Only `rate_limit_reached_type` or a limit error blocks it.
 - **Other kinds** report no usage. agent-swap switches after a limit error. A limit error is text that contains `rate limit`, `429`, `quota`, `usage limit`, `budget exceeded`, `resource_exhausted`, `insufficient_balance` or `402`. If the error gives no reset time, the harness stays blocked for `cooldown`.
 - **If all harnesses are blocked**, agent-swap runs the harness that becomes free first.
 
 ### How the conversation carries over
 
-agent-swap reads every completed turn of the running harness into an in-memory log. It keeps one **mirror** per kind: a native session that agent-swap writes the log into. At a switch, the next harness resumes its mirror, so it opens its own session with the whole conversation in it. agent-swap writes mirrors for `claude`, `codex`, `pi` and `opencode`. `agy` has no mirror: it gets a context file. [Mirrors](docs/ARCHITECTURE.md#mirrors) gives the details. `context_max_bytes` limits the text in one mirror or context file.
+agent-swap reads every completed turn of the running harness into an in-memory log. It keeps one **mirror** per kind. A mirror is a native session that agent-swap writes the log into. At a switch, the next harness resumes its mirror, so it opens its own session with the whole conversation in it. agent-swap writes mirrors for `claude`, `codex`, `pi` and `opencode`. `agy` has no mirror. It gets a context file. [Mirrors](docs/ARCHITECTURE.md#mirrors) gives the details. `context_max_bytes` limits the text in one mirror or context file.
 
 ### Known limits and unverified items
 
@@ -218,11 +218,11 @@ agent-swap reads every completed turn of the running harness into an in-memory l
 - **Rewinds.** A claude rewind, a pi `/tree` branch switch or an opencode `/undo` removes turns from the running session. agent-swap detects this and writes a line to the log. It does not remove those turns from the other mirrors.
 - **`agy` is lossy.** Antigravity stores steps as protobuf in SQLite. agent-swap extracts only the readable text, as one assistant turn that starts with `[lossy agy transcript]`. agy receives the context file, not a mirror.
 - **Mirrors keep text.** A new mirror holds every turn as text. Tool calls become user-role text in an `agent-swap-tool` tag. A mirror that agent-swap only appends to keeps the native turns of its own kind.
-- **Composer draft.** An automatic switch clears an unsent draft in the composer: agent-swap types `C-u` before the quit command.
+- **Composer draft.** An automatic switch clears an unsent draft in the composer. agent-swap types `C-u` before the quit command.
 - **Esc interrupt.** claude fires no `Stop` on an Esc interrupt, so a switch waits for the next completed turn.
-- **pi model warning.** When pi resumes a session that agent-swap created, it prints "Warning: Could not restore model agent-swap/import. Using <default>". This is harmless: pi falls back to its configured default model, or to the model in the harness `args`.
-- **Codex `/new`.** Mid-run, agent-swap does not follow a new codex session started with `/new` (or a codex backtrack that starts a new rollout) mid-run. It keeps reading the session it launched, so codex turns after `/new` do not enter the conversation. Another codex in the same repo cannot be told apart from `/new` without tying the rollout to the child process.
-- **Rejected session change.** After agent-swap rejects a session change (`/clear`, `/resume`, `/new`; not followed for codex), sync from that harness pauses until it is relaunched.
+- **pi model warning.** When pi resumes a session that agent-swap created, it prints "Warning: Could not restore model agent-swap/import. Using <default>". The warning has no effect. pi uses its configured default model, or the model in the harness `args`.
+- **Codex `/new`.** During a run, agent-swap does not follow a new codex session that `/new` or a codex backtrack starts. It keeps reading the session that it launched, so codex turns after `/new` do not enter the conversation. agent-swap cannot tell `/new` apart from another codex in the same repo, because it does not link a rollout to the child process.
+- **Rejected session change.** A session change is `/clear`, `/resume` or `/new`. After agent-swap rejects a session change, sync from that harness pauses until the harness starts again.
 - **Background tasks.** A background shell command or subagent stops when the harness quits at a switch. The next harness does not see it. Start it again.
 - **`agy` quota text** is not tested. agent-swap looks for `Quota exhausted` and the limit-error words in the agy log. The real message can differ.
 
@@ -247,7 +247,7 @@ agent-swap use auto       # return to automatic order
 agent-swap sync [harness] # write the conversation into harness's session (default: all)
 ```
 
-`use` pins the harness. The switch happens at the next idle point. The pin ends when the pinned harness gets a new block (a limit). `sync` brings the mirror of a harness that is not running up to date. Then you can open that session outside agent-swap, for example with `codex resume <id>`. `status` lists the native IDs.
+`use` pins the harness. The switch happens at the next idle point. The pin ends when the pinned harness gets a new limit block. `sync` brings the mirror of a harness that is not running up to date. Then you can open that session outside agent-swap, for example with `codex resume <id>`. `status` lists the native IDs.
 
 `use` and `sync` find the run from `--session DIR`, then `$AGENT_SWAP_SESSION_DIR`, then the one agent-swap pane in the current tmux window. Inside a harness, `use` needs `--force`.
 
@@ -255,7 +255,7 @@ agent-swap sync [harness] # write the conversation into harness's session (defau
 
 ```sh
 agent-swap [flags] [-- claude args]   # launch in tmux (the normal entry point)
-agent-swap status [--config PATH] [--session DIR]   # usage, desired harness, pin and mirrors
+agent-swap status [--config PATH] [--session DIR]   # usage, desired and wanted harness, pin, mirrors
 agent-swap use <harness|auto> [--session DIR] [--force]
 agent-swap sync [harness] [--session DIR]
 agent-swap --help
@@ -270,7 +270,7 @@ agent-swap hook <Event>                   # SessionStart | UserPromptSubmit | St
 agent-swap key <target>                   # apiKeyHelper
 ```
 
-`status` lists the pin and, for each mirror, its native ID and how many turns it is behind. Every command, including the launcher and `run`, reads the config from `--config`. If you omit the flag, it uses `$AGENT_SWAP_CONFIG`, then the default path.
+`status` lists the pin and the wanted harness after the pin. For each mirror, it lists the native ID and the number of turns that the mirror is behind. Every command, including the launcher and `run`, reads the config from `--config`. If you omit the flag, it uses `$AGENT_SWAP_CONFIG`, then the default path.
 
 ## Files and state
 
@@ -292,9 +292,9 @@ agent-swap key <target>                   # apiKeyHelper
 - **Every harness must already trust the project directory.** Claude Code and Codex each show a folder-trust dialog in a new directory. An unattended switch stops at that dialog. Start each harness in the directory once and accept the dialog before you use agent-swap there.
 - **Background work stops at a switch.** `/exit` stops Claude's background shell commands and subagents. After the switch, start them again.
 - **claude.ai connectors are off on API billing.** Claude Code turns off claude.ai MCP connectors whenever a credential other than your claude.ai login is in use.
-- **Built-in auto-continue doesn't run in wrapped sessions.** agent-swap switches billing instead of waiting.
+- **Built-in auto-continue does not run in wrapped sessions.** agent-swap switches billing instead of waiting.
 - **Usage is unknown until the first response.** `rate_limits` appears only after the first API response of a subscription session. On API billing it is absent. For this reason, agent-swap stores the reset time when the harness is blocked.
-- **`--threshold` and `/usage` can differ.** The threshold uses the percentage Claude Code reports, which can differ slightly from the claude.ai usage page.
+- **`--threshold` and `/usage` can differ.** The threshold uses the percentage that Claude Code reports. That value can differ from the claude.ai usage page.
 - **The tmux status bar is per session.** agent-swap sets `status-right` for the tmux session it runs in.
 
 ## Troubleshooting
@@ -302,7 +302,7 @@ agent-swap key <target>                   # apiKeyHelper
 | Symptom | What to check |
 |---|---|
 | The status bar shows `SUB · usage unknown` | Send one prompt. `rate_limits` appears after the first response, and only on Pro, Max or Ultra plans. |
-| Nothing happens at the threshold | Check `agent-swap status` and the session `log`. Is `poll` very long? |
+| Nothing happens at the threshold | Check `agent-swap status` and the session `log`. Verify the `poll` value. A long interval delays the switch. |
 | The API session fails to authenticate | Run `agent-swap key <target>` yourself. It must print exactly one key. |
 | The API session returns 404 or 405 | `base_url` must be the prefix before `/v1/messages`. For example, a gateway may serve it at `/anthropic/v1/messages`. |
 | A switch does not happen | A switch waits for an idle point. Check `agent-swap status` and the session `log`. `agy` and `codex` report idle through polling, so allow one `poll`. |
@@ -314,9 +314,9 @@ agent-swap key <target>                   # apiKeyHelper
 
 **Why not use usage credits?** If your Claude account can pay for the overflow, enable usage credits and do not use this tool. Usage credits need no restart.
 
-**Does the conversation really continue?** Yes. `claude --resume <id>` reloads the full transcript. Each provider has its own prompt cache. Thus the first request after a switch writes the full cache again.
+**Does the conversation continue?** Yes. Each harness resumes its own session, and that session holds the full conversation. Each provider has its own prompt cache. Thus the first request after a switch writes the full cache again.
 
-**Can I force a switch?** Yes. Edit `harnesses.<name>.blocked_until` in `account.json`. Set it to a future Unix time to move away from that harness. Set it to `0` to allow it again. A forced return stays only while the harness's usage is below the threshold. If usage is at or above the threshold, the next poll blocks it again.
+**Can I force a switch?** Yes. Use `agent-swap use <harness>`. See [Harness swap](#harness-swap). To block a harness by hand, edit `harnesses.<name>.blocked_until` in `account.json`. Set it to a future Unix time to move away from that harness. Set it to `0` to allow it again. A forced return stays only while the harness's usage is below the threshold. If usage is at or above the threshold, the next poll blocks it again.
 
 ## Documentation
 
