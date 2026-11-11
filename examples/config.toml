@@ -2,9 +2,8 @@
 # The values for scalar keys are the defaults.
 threshold = 95              # percent of any usage window that starts a switch; must be > 0 and <= 100
 switch_back_delay = "10m"   # wait after a blocked harness's reset before going back to it; must be >= 0
-switch_back_timeout = "1h"  # max wait for the ready file before a forced switch back at idle; must be > 0
 cooldown = "1h"             # block period after a limit error with no known reset; must be >= 0
-context_max_bytes = 60000   # cap on the conversation text given to the next harness (newest kept); must be > 0
+context_max_bytes = 200000  # cap on the conversation text written into one harness's session (newest kept); must be > 0
 poll = "30s"                # must be > 0
 notify = true               # macOS notification on each switch
 # statusline_cmd = "..."    # default: statusLine.command from ~/.claude/settings.json
@@ -15,7 +14,7 @@ notify = true               # macOS notification on each switch
 # from default_target (or --target).
 # Keys: name (unique), kind (claude|codex|pi|opencode|agy), bin (default: the kind,
 # or claude_bin for claude), args (always passed), target (claude only),
-# threshold and cooldown (override the top-level values).
+# threshold, cooldown and context_max_bytes (override the top-level values).
 
 [[harness]]                 # Claude Code on your subscription: usage windows 5h and 7d
 name = "claude"
@@ -31,6 +30,7 @@ name = "pi-deepseek"
 kind = "pi"
 args = ["--provider", "deepseek", "--model", "deepseek-chat"]
 cooldown = "30m"
+context_max_bytes = 60000   # a model with a small context window needs a smaller cap
 
 [[harness]]                 # Claude Code on API billing through [targets.gateway]: the last resort
 name = "claude-api"
@@ -42,7 +42,6 @@ target = "gateway"
 base_url = "https://llm-gateway.example.com/anthropic"
 key_cmd  = "security find-generic-password -s llm-gateway -w"   # required
 
-# Message templates. Placeholders: {from} {to} {file} {notes} {context} {reason} {pct} {resets_at}
-# handoff_message = "..."   # before a switch down the list; must include {file}
-# return_message = "..."    # before a switch back up the list; must include {file}
-# resume_message = "..."    # first prompt to the next harness; names the {context} file
+# Prompt for a harness that gets a context file instead of a session (agy, or a failed write).
+# Placeholders: {from} {to} {context}
+# resume_message = "..."

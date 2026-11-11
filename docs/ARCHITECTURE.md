@@ -10,14 +10,14 @@ agent-swap is one Go binary with five roles. Each role has a different caller: t
 | Hook: `agent-swap hook <Event>` | Claude Code hooks, the pi extension, the opencode plugin | `internal/swap/helpers.go` |
 | Key helper: `agent-swap key <target>` | Claude Code `apiKeyHelper` | `internal/swap/helpers.go` |
 
-The decision logic is in `internal/swap/logic.go`: `Peak`, `Desired`, `Trigger`, `Decide` and `StatusText`. This file has no I/O. Its tests need no tmux and no Claude Code.
+The decision logic is in `internal/swap/logic.go`: `Peak`, `Desired`, `Want`, `Trigger`, `Decide` and `StatusText`. This file has no I/O. Its tests need no tmux and no Claude Code.
 
 ## Design principles
 
 1. **No screen scraping.** Every signal comes from a harness interface: hooks, plugins, or the session files that the harness writes. agent-swap uses tmux only to type input (`send-keys`) and to set `status-right`.
-2. **Never cut a turn.** A switch always waits for an idle point, reported by the `Stop` or `StopFailure` hook.
+2. **Never cut a turn.** A switch always waits for an idle point, reported by the hooks, the plugins or `Poll`.
 3. **Secrets stay out of files and the environment.** Claude Code gets the API key on demand through `apiKeyHelper`.
-4. **Account-wide state, per-session action.** All sessions share the usage of each harness. Thus all sessions agree on the desired harness. Each session does its own handoff.
+4. **Account-wide state, per-session action.** All sessions share the usage of each harness. Thus all sessions agree on the desired harness. Each session does its own switch.
 5. **No daemon.** Each supervisor polls the shared state file. Each writer holds a `flock` and writes a temporary file, then renames it.
 
 ## Adapters
@@ -29,30 +29,33 @@ type Adapter interface {
 	Command(h Harness, native, prompt string, extra []string, rt Runtime) (Launch, error)
 	Quit() string
 	Poll(h Harness, rt Runtime, s *Session, u *Usage) error
-	Transcript(native string, rt Runtime) (string, error)
+	Turns(native, cursor string, rt Runtime) ([]Turn, string, error)
+	Write(h Harness, m *Mirror, turns []Turn, rt Runtime) (int, error)
 }
 ```
 
 - `Command` builds the child process. `native` is the harness's own session ID to resume, or empty for a new session. `prompt` is the first message, or empty. `extra` holds the user arguments. `Command` also writes any generated file (claude settings, pi extension, opencode config and plugin) into the session directory.
 - `Quit` is the text that the supervisor types to exit the harness.
 - `Poll` updates the session and usage for kinds that give no hooks (`codex`, `agy`). It reads their session files. For the other kinds it does nothing.
-- `Transcript` returns the native conversation as plain text, one block per turn: `[user] …`, `[assistant] …`, `[tool] name: input`.
+- `Turns` reads the completed turns of a native session after `cursor` (empty = from the start). It returns the turns and the new cursor. A cursor is a byte offset for the JSONL kinds and the last message ID for opencode. It returns `errRewound`, with the turns, when the last entry before the cursor is no longer on the active chain.
+- `Write` puts turns into a mirror. If `m.Native` is empty, it creates a session. Otherwise it appends to the owned session `m`. It returns how many turns `Turns` must read back. `agy` returns `errNoMirror`. Any other `Write` error gets one Create retry, then the context file.
 
-| Kind | Tested | Resume | Signals | Transcript source |
+| Kind | Tested | Resume | Signals | Session source (read and mirror) |
 |---|---|---|---|---|
-| `claude` | 2.1.322 | `--resume <id>` | hooks and statusline through `--settings` | `~/.claude/projects/<slug>/<id>.jsonl` |
-| `codex` | 0.166 | `codex resume <id>` | `Poll` on the rollout file in `$CODEX_HOME/sessions` | the same rollout file |
-| `pi` | 1.5.1 | `--session <id>` | extension `agent-swap-pi.ts` through `-e` | `~/.pi/agent/sessions/*/*_<id>.jsonl` |
-| `opencode` | 1.19.5 | `-s <id>` | plugin through `OPENCODE_CONFIG` | `opencode export <id>` |
-| `agy` | 1.5.5 | `--conversation <id>` | `Poll` on its own log, `history.jsonl` and `conversation_summaries.db` | `conversations/<id>.db`, lossy |
+| `claude` | 2.1.322 | `--resume <id>` | hooks and statusline through `--settings` | `~/.claude/projects/<slug>/<id>.jsonl`, read and written |
+| `codex` | 0.166 | `codex resume <id>` | `Poll` on the rollout file in `$CODEX_HOME/sessions` | the same rollout file, read and written (rollouts under `$CODEX_HOME/sessions`) |
+| `pi` | 1.5.1 | `--session <path>` | extension `agent-swap-pi.ts` through `-e` | `~/.pi/agent/sessions/*/*_<id>.jsonl`, read and written |
+| `opencode` | 1.19.5 | `-s <id>` | plugin through `OPENCODE_CONFIG` | `opencode export <id>`, written with `opencode import` |
+| `agy` | 1.5.5 | `--conversation <id>` | `Poll` on its own log, `history.jsonl` and `conversation_summaries.db` | `conversations/<id>.db`, read only and lossy |
 
 All five kinds passed a live switch in the order claude → codex → pi → claude and claude → opencode → agy → pi → claude.
 
 Notes per kind:
 
-- **codex:** usage windows come from `rate_limits`. A session on paid credits is not limited. Only `rate_limit_reached_type` or a limit error counts.
-- **opencode:** the plugin reports a retry as a limit only after 3 attempts. The generated config sets `permission.external_directory` to `allow` for the session directory and the handoff directory (and their symlink-resolved paths) only.
-- **agy:** each session gets its own `--log-file` (`agy.log`) in the session directory. `Poll` reads the native ID from the last `Created conversation <id>` or `Streaming conversation <id>` line after the launch. If there is none, it uses `history.jsonl`. `Poll` also reads limit errors from that log. `conversation_summaries.db` gives only the idle status. The transcript keeps only prose runs: 8 or more characters with at least 2 spaces, each up to 500 bytes.
+- **claude:** `Stop` fires before the final line is flushed, so the runner re-reads while the session file is longer than the cursor.
+- **codex:** mid-run, agent-swap does not follow a new codex session started with `/new` (or a codex backtrack that starts a new rollout) mid-run. It keeps reading the session it launched, so codex turns after `/new` do not enter the conversation. Another codex in the same repo cannot be told apart from `/new` without tying the rollout to the child process. The writer makes an importer-style rollout: no ordinal on Create, ordinal continued on Append. It never writes `state_5.sqlite`; codex indexes the rollout on resume. Usage windows come from `rate_limits`. A session on paid credits is not limited. Only `rate_limit_reached_type` or a limit error counts.
+- **opencode:** the writer runs `opencode --pure import`. A failed import is rerun once with the same file, because imports are not transactional. Session IDs (`ses_`) are descending. The plugin reports a retry as a limit only after 3 attempts. `opencode export` and `opencode import` run with `--pure` in the run's cwd. The export goes through a private temp file, because a pipe truncates it at 192 KiB.
+- **agy:** each session gets its own `--log-file` (`agy.log`) in the session directory. `Poll` reads the native ID from the last `Created conversation <id>` or `Streaming conversation <id>` line after the launch. If there is none, it uses `history.jsonl`. `Poll` also reads limit errors from that log. `conversation_summaries.db` gives only the idle status. `Turns` keeps only prose runs (8 or more characters with at least 2 spaces, each up to 500 bytes). The steps after the cursor become one assistant turn that starts with `[lossy agy transcript]`. `Write` is not supported: agy receives the context file.
 
 ## Process model
 
@@ -70,7 +73,7 @@ tmux pane
 
 When the pane process exits, the pane closes. Thus the supervisor is the pane process, and the harness is its child process. The two share the TTY of the pane. When the child exits:
 
-- **If a switch was pending**, the supervisor starts the next harness. See [Context building](#context-building).
+- **If a switch was pending**, the supervisor starts the next harness. See [Mirrors](#mirrors).
 - **Otherwise**, the user quit. The supervisor exits with the harness's exit code, and the pane closes as usual.
 
 The supervisor ignores `SIGINT`, so Ctrl-C goes to the harness. The supervisor stops on `SIGTERM` or `SIGHUP`.
@@ -116,10 +119,10 @@ The child process gets the environment of the supervisor, minus the endpoint and
 `sessions/<id>/session.json` is per supervisor. The hooks or `Poll` write it:
 
 ```json
-{"native_id": "bf8d…", "idle": true, "rate_limited": false, "started_at": 1794600000}
+{"native_id": "bf8d…", "idle": true, "rate_limited": false, "turns": 12, "started_at": 1794600000}
 ```
 
-`native_id` is the session ID of the running harness. The supervisor resets this file before each launch.
+`turns` counts completed turns: the hooks, the plugins and `Poll` increase it on `Stop` and `StopFailure`. The supervisor reads new turns when it changes. `native_id` is the session ID of the running harness. The supervisor resets this file before each launch.
 
 | Hook | Effect |
 |---|---|
@@ -149,38 +152,49 @@ The input is the ordered list of harnesses from `Config.Order`. A lower index me
 
 A window is live until its `resets_at`. Thus old data cannot start a new trigger after a switch back. `UserPromptSubmit` clears the rate-limited flag.
 
-### Decide (per session)
+### Want and Decide (per session)
 
-```
-          desired ≠ current                           ready ∧ idle
-  ┌──────┐ ─────────────────▶ ┌─────────────────┐ ─────────────▶ ┌─────────┐
-  │ Noop │                     │ Handoff pending │                 │ quit →  │
-  └──────┘ ◀───────────────── └─────────────────┘                 │ relaunch│
-                                                                    └─────────┘
-                  desired ≠ handoff target
-  Noop ◀──────────────────────────────────── Handoff pending   (Cancel)
-```
+`Want` is the harness this session should run: the pin from `agent-swap use` if it names a configured harness, else `Desired`. `Decide` has two actions:
 
-- **No handoff pending:**
-  - If the desired harness is the current harness, do nothing.
-  - If the session is rate-limited and idle, switch immediately. A message would only cause one more failed turn.
-  - Otherwise, start a handoff. The message is `handoff_message` for a move down the list and `return_message` for a move up. It names a one-time ready file and a notes file. Both are in `$TMPDIR/agent-swap-<session>/`, so a sandboxed codex can write them. The supervisor removes this directory on a clean exit.
-- **Handoff pending, but its target is no longer the desired harness:** cancel. The supervisor deletes the ready file and clears the handoff.
-- **Handoff pending.** Nothing happens while the session is busy. Once it is idle, it is ready if any of these hold:
-  - **Down the list:** the ready file exists, the session is rate-limited, or peak usage is ≥ 100%. This wait has no timeout.
-  - **Up the list:** the ready file exists, or `switch_back_timeout` has passed since the handoff started.
+- **Switch**, if `Want` differs from the running harness and the session is idle.
+- **Noop**, otherwise.
 
-When ready, the supervisor needs the native session ID. If the ID is empty, it does not switch and tries again at the next poll. Otherwise it types the adapter's quit command. If the child does not exit, the supervisor escalates: it types the command again after 30 s, sends Ctrl-C twice after 60 s, sends `SIGTERM` after 90 s, and then sends `SIGKILL`. It checks these times on each poll tick. Thus each step can come up to one `poll` late.
+There is no handoff phase. A move down the list happens at the first idle point at or over the threshold. The default of 95% leaves room for the turn in progress. If the session is rate-limited and idle, it switches at once.
 
-### Context building
+`request.json` holds the pin and the sync requests. The supervisor validates it on every read:
 
-After the child exits, the supervisor reads the desired harness again. Then it does these steps:
+- The pin must name a configured harness. It ends when that harness gets a new `blocked_until`, and the supervisor sends a notification.
+- A `sync` request names harnesses (`*` = all). The supervisor materializes the mirrors of those that are not running.
 
-1. It calls `Transcript` for the old harness and writes `segment-<n>-<name>.md`. An error goes into the segment as a note. It never stops the switch.
-2. It writes `context-<n>.md`: a header, the handoff notes (if the file exists), then the segments that the next harness has not seen, newest first. There is one segment per native session. If the next harness never ran, that is all segments. Else it is the segments after its last run. The file is limited to `context_max_bytes` (default 60000). The notes are always kept. The newest segment comes next and is cut from its oldest end if necessary. Older segments that do not fit are dropped.
-3. It starts the next harness. It resumes the native session if that harness ran before. The prompt is `resume_message`, which names the context file.
+When the decision is Switch, the supervisor needs the native session ID. If the ID is empty, it does not switch and tries again at the next poll. Otherwise it types the adapter's quit command. If the child does not exit, the supervisor escalates: it types the command again after 30 s, sends Ctrl-C twice after 60 s, sends `SIGTERM` after 90 s, and then sends `SIGKILL`. It checks these times on each poll tick. Thus each step can come up to one `poll` late.
 
-The user arguments go to the first launch. A later launch gets them only when its kind is the kind of the first harness. For claude, `ReplayArgs` drops the session options.
+## Mirrors
+
+A mirror is the session of one harness kind that agent-swap keeps in step with the conversation. The code is in `conv.go`, `mirror.go` and `store.go`. The runner is the only authority. Nothing is persisted: if the runner dies, its child dies too. `mirrors.json` is written for `status` only and is never read back.
+
+**Log.** `[]Turn{Origin, Role, Text}` in memory. `Origin` is the harness kind that produced the turn. A tool call and its result become one user-role turn: `<agent-swap-tool source=… tool=… untrusted="true">input → output</agent-swap-tool>`. Input is cut to 1024 bytes and output to 4096 bytes. Text goes through `escape` (neutralizes the tag) and `redact` (best-effort secret removal) before it enters the log. The prompts that agent-swap types itself are not conversation and are skipped.
+
+**Mirror** per kind: the native ID, the path, a cursor, `Synced` (the log index already in the session), `Base` (where its last Create started), the device and inode, and `Owned`. claude-sub and claude-api share the claude mirror. Two pi harnesses share the pi mirror.
+
+**Reading (`ingest`).** The supervisor runs it when `session.json` `turns` changes, once more on the next tick and while the session file is longer than the cursor, and at child exit. agy is read only at exit. If the running harness moves to another native session (`/clear`, `/new`, `/resume`; codex is not followed, see the codex note below), `ingest` starts an **epoch**. If the new session is in the kind's store for this cwd and readable, the log restarts from it and the other mirrors are dropped. Otherwise sync from that harness pauses and the event is logged. A rewind (`errRewound`) is logged. The other mirrors keep the earlier turns.
+
+**Writing (`materialize`).** It runs at takeover, and for `sync`. The delta is the log after `Synced`, minus the turns whose `Origin` is the target kind, because those are native there.
+
+- **No delta:** nothing to write. The harness resumes as is.
+- **Append** if the mirror is owned, `logBytes(log[Base:])` is within the budget, and the identity check passes. The writer first reads the tail of its own file. For claude, each unanswered `tool_use` gets a synthetic error `tool_result`, and the chain starts at the last real entry. If a user turn would follow a user turn, claude and pi insert an assistant turn `[agent-swap] (turn interrupted)`. codex and opencode accept consecutive user messages, so their appends only merge. It merges same-role turns.
+- **Create** otherwise: a new session with `capTurns(log, budget)` as text, with `[agent-swap] N earlier turns omitted` in front when capped. One retry follows a failed write.
+- **Self-check:** after each write, `Turns` must parse the session and read back the written turns.
+- **Fallback:** if Create fails twice, or the kind has no mirror (agy), the supervisor writes `context-<n>.md` (mode 0600) and starts the harness fresh with `resume_message`.
+
+The budget is `context_max_bytes` of the harness, else the top-level value (default 200000).
+
+**Ownership.** Only a session that agent-swap or the harness created during this run is appended to. A session is owned if its first timestamp is not older than the run. A first launch with `--resume` or `--continue` is not owned: claude gets `--fork-session`, so its fork is owned. For the other kinds the pre-existing session is read but never written, and the first takeover creates a copy.
+
+Format facts verified live: see [spike-phase0.md](spike-phase0.md).
+
+**Identity check.** Before an append, the path must match the stored kind, root and ID, and stay under the store root after symlink resolution. It must be a regular file with one link, the same device and inode, and exactly as long as the cursor. Files are created with `O_EXCL|O_NOFOLLOW` and mode 0600. An append is one `O_APPEND` write plus `fsync`.
+
+After a cut-off (`RateLimited` or `StopFailure`) the first prompt tells the next harness to resume. After a normal stop there is no prompt.
 
 ## Verified Claude Code behaviors
 
@@ -198,12 +212,13 @@ Live tmux tests on Claude Code 2.1.322 showed these behaviors. If a new Claude C
 
 ## Testing
 
-- `logic_test.go`: thresholds, windows that have reset, the choice of reset time, `Desired` over an ordered list, the readiness matrix, the switch-back timeout, and status text.
-- `adapter_*_test.go`: commands, polling and transcripts for each kind, from fixtures in `testdata/`.
+- `logic_test.go`: thresholds, windows that have reset, the choice of reset time, `Desired` over an ordered list, `Want` with a pin, `Decide`, and status text.
+- `adapter_*_test.go`: commands, polling, reading and writing for each kind, from fixtures in `testdata/`.
+- `conv`, `store` and `mirror` tests: the log, caps, identity checks, ownership, epochs and fallbacks.
 - `helpers_test.go`: statusline recording and pass-through, hook state changes, the settings JSON, key output checks, the config overlay, and session naming.
 - `runner_test.go`: a full SUB → API → SUB cycle. Fake `tmux` and `claude` shell scripts replace the real programs, and all timings are below 1 s. The test verifies:
   - the launch arguments
-  - that the supervisor sends no `/exit` before the ready file exists
+  - that the supervisor sends no `/exit` while the session is busy
   - the resume messages
   - that a window after its reset does not start a new trigger
   - that the supervisor returns the exit code of Claude
