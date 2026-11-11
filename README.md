@@ -46,17 +46,26 @@ The tmux status bar shows the state of the running harness:
 
 ## Why
 
-agent-swap helps in two cases:
+agent-swap helps when an agent stops at a usage limit. Claude Code on a Pro, Max or Ultra plan and Codex CLI on a ChatGPT plan have a short usage window and a weekly one. Other agents have quotas or a budget. When a limit is full, the agent stops until it resets.
+
+Use agent-swap in these cases:
 
 - **You use several agents.** When one agent reaches its limit, you continue the same conversation in the next agent. You do not paste context by hand.
-- **You use Claude Code and want the overflow on a different bill.** Claude Pro, Max and Ultra plans have a 5-hour and a 7-day usage window. When a window is full, Claude Code stops until the window resets.
+- **You want the overflow on a different bill.** List a harness that bills a pay-per-use API after your subscription harnesses. The API can be a company LLM gateway or your own API key. When the subscription agent stops, the conversation continues there. After the reset, it moves back.
 
-Claude Code has two built-in options for a full window:
+These agents can bill an API:
+
+- **pi and opencode.** Choose the provider and the model in the harness `args`, for example `["--provider", "deepseek", "--model", "deepseek-chat"]` for pi or `["-m", "<provider>/<model>"]` for opencode. Both passed a live switch on an API gateway.
+- **Claude Code.** Add a `target`. agent-swap then moves the same Claude Code conversation from your subscription to API billing. See [Targets](#targets-claude-api-billing).
+- **Codex CLI.** A second codex harness can select an API provider with a profile, for example `args = ["-p", "api"]`. The profile file `$CODEX_HOME/api.config.toml` defines a provider that reads its key from an environment variable. Set that variable in your shell. This setup is not tested.
+- **Antigravity CLI.** agent-swap has no tested way to select API billing for agy.
+
+Claude Code also has two built-in options for a full window:
 
 - **Usage credits.** You keep working past the limit, and your **Claude account** pays at API rates.
 - **Auto-continue.** The session waits and continues after the reset. This works only if the reset is less than 24 hours away.
 
-Use agent-swap when the overflow must go to **a different bill**, for example a company LLM gateway or a separate API key. agent-swap moves your live session there and back. Your context stays the same.
+agent-swap moves the conversation to a different bill or a different agent. Your context stays the same.
 
 ## Requirements
 
@@ -119,10 +128,10 @@ Before the first run, start each agent once in your project directory. Log in, a
    [[harness]]
    name = "pi"
    kind = "pi"
-   args = ["--provider", "deepseek", "--model", "deepseek-chat"]
+   args = ["--provider", "deepseek", "--model", "deepseek-chat"]   # billed by the DeepSeek API
    ```
 
-2. Run `agent-swap` in your project directory. It starts the first harness in the list, here codex. When codex reaches a limit, agent-swap moves the conversation to pi.
+2. Run `agent-swap` in your project directory. It starts the first harness in the list, here codex on your ChatGPT plan. When codex reaches a limit, agent-swap moves the conversation to pi on the DeepSeek API.
 
 ### Claude Code with API overflow
 
